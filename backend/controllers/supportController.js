@@ -32,13 +32,7 @@ const createTicket = async (req, res) => {
 
   try {
     const userId = getUserId(req);
-    const {
-      order_id,
-      subject,
-      category,
-      priority,
-      message,
-    } = req.body || {};
+    const { order_id, subject, category, priority, message } = req.body || {};
 
     if (!userId) {
       return res.status(401).json({
@@ -88,8 +82,7 @@ const createTicket = async (req, res) => {
       });
     }
 
-    const normalizedPriority =
-      priority === undefined ? "normal" : priority;
+    const normalizedPriority = priority === undefined ? "normal" : priority;
 
     if (
       typeof normalizedPriority !== "string" ||
@@ -104,11 +97,7 @@ const createTicket = async (req, res) => {
 
     let orderId = null;
 
-    if (
-      order_id !== undefined &&
-      order_id !== null &&
-      order_id !== ""
-    ) {
+    if (order_id !== undefined && order_id !== null && order_id !== "") {
       if (!isPositiveId(order_id)) {
         return res.status(400).json({
           success: false,
@@ -130,22 +119,18 @@ const createTicket = async (req, res) => {
          FROM orders
          WHERE id = ? AND user_id = ?
          LIMIT 1`,
-        [orderId, userId]
+        [orderId, userId],
       );
 
       if (orders.length === 0) {
-        throw makeError(
-          404,
-          "Order not found for this customer"
-        );
+        throw makeError(404, "Order not found for this customer");
       }
     }
 
-    const ticketNumber =
-      `SS-TKT-${Date.now()}-${crypto
-        .randomBytes(3)
-        .toString("hex")
-        .toUpperCase()}`;
+    const ticketNumber = `SS-TKT-${Date.now()}-${crypto
+      .randomBytes(3)
+      .toString("hex")
+      .toUpperCase()}`;
 
     const [ticketResult] = await connection.query(
       `INSERT INTO support_tickets (
@@ -165,7 +150,7 @@ const createTicket = async (req, res) => {
         normalizedCategory,
         normalizedPriority.toLowerCase(),
         subject.trim(),
-      ]
+      ],
     );
 
     const ticketId = ticketResult.insertId;
@@ -178,7 +163,7 @@ const createTicket = async (req, res) => {
          attachment
        )
        VALUES (?, ?, ?, NULL)`,
-      [ticketId, userId, message.trim()]
+      [ticketId, userId, message.trim()],
     );
 
     await connection.commit();
@@ -235,7 +220,7 @@ const getMyTickets = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(req.query.limit, 10) || 20)
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
     );
     const offset = (page - 1) * limit;
 
@@ -268,14 +253,14 @@ const getMyTickets = async (req, res) => {
        WHERE t.user_id = ?
        ORDER BY t.updated_at DESC, t.id DESC
        LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
+      [userId, limit, offset],
     );
 
     const [countRows] = await db.promise().query(
       `SELECT COUNT(*) AS total
        FROM support_tickets
        WHERE user_id = ?`,
-      [userId]
+      [userId],
     );
 
     const total = Number(countRows[0].total);
@@ -330,7 +315,7 @@ const getMyTicketDetails = async (req, res) => {
        FROM support_tickets
        WHERE id = ? AND user_id = ?
        LIMIT 1`,
-      [ticketId, userId]
+      [ticketId, userId],
     );
 
     if (tickets.length === 0) {
@@ -352,7 +337,7 @@ const getMyTicketDetails = async (req, res) => {
        JOIN users u ON u.id = m.sender_id
        WHERE m.ticket_id = ?
        ORDER BY m.created_at ASC, m.id ASC`,
-      [ticketId]
+      [ticketId],
     );
 
     return res.status(200).json({
@@ -409,7 +394,7 @@ const sendCustomerMessage = async (req, res) => {
        FROM support_tickets
        WHERE id = ? AND user_id = ?
        FOR UPDATE`,
-      [ticketId, userId]
+      [ticketId, userId],
     );
 
     if (tickets.length === 0) {
@@ -421,7 +406,7 @@ const sendCustomerMessage = async (req, res) => {
     if (["resolved", "closed"].includes(status)) {
       throw makeError(
         400,
-        "This ticket is closed. Please create a new support ticket."
+        "This ticket is closed. Please create a new support ticket.",
       );
     }
 
@@ -433,14 +418,14 @@ const sendCustomerMessage = async (req, res) => {
          attachment
        )
        VALUES (?, ?, ?, NULL)`,
-      [ticketId, userId, message.trim()]
+      [ticketId, userId, message.trim()],
     );
 
     await connection.query(
       `UPDATE support_tickets
        SET status = 'open'
        WHERE id = ?`,
-      [ticketId]
+      [ticketId],
     );
 
     await connection.commit();
@@ -484,7 +469,7 @@ const getAdminTickets = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(req.query.limit, 10) || 20)
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
     );
     const offset = (page - 1) * limit;
 
@@ -493,11 +478,7 @@ const getAdminTickets = async (req, res) => {
         ? req.query.status.trim().toLowerCase()
         : "";
 
-    if (
-      status &&
-      status !== "all" &&
-      !allowedStatuses.includes(status)
-    ) {
+    if (status && status !== "all" && !allowedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid ticket status",
@@ -505,15 +486,9 @@ const getAdminTickets = async (req, res) => {
       });
     }
 
-    const whereClause =
-      status && status !== "all"
-        ? "WHERE t.status = ?"
-        : "";
+    const whereClause = status && status !== "all" ? "WHERE t.status = ?" : "";
 
-    const params =
-      status && status !== "all"
-        ? [status]
-        : [];
+    const params = status && status !== "all" ? [status] : [];
 
     const [tickets] = await db.promise().query(
       `SELECT
@@ -550,14 +525,14 @@ const getAdminTickets = async (req, res) => {
          t.updated_at DESC,
          t.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, limit, offset],
     );
 
     const [countRows] = await db.promise().query(
       `SELECT COUNT(*) AS total
        FROM support_tickets t
        ${whereClause}`,
-      params
+      params,
     );
 
     const total = Number(countRows[0].total);
@@ -609,7 +584,7 @@ const getAdminTicketDetails = async (req, res) => {
         AND o.user_id = t.user_id
        WHERE t.id = ?
        LIMIT 1`,
-      [ticketId]
+      [ticketId],
     );
 
     if (tickets.length === 0) {
@@ -631,7 +606,7 @@ const getAdminTicketDetails = async (req, res) => {
        JOIN users u ON u.id = m.sender_id
        WHERE m.ticket_id = ?
        ORDER BY m.created_at ASC, m.id ASC`,
-      [ticketId]
+      [ticketId],
     );
 
     return res.status(200).json({
@@ -688,7 +663,7 @@ const replyToTicket = async (req, res) => {
        FROM support_tickets
        WHERE id = ?
        FOR UPDATE`,
-      [ticketId]
+      [ticketId],
     );
 
     if (tickets.length === 0) {
@@ -700,7 +675,7 @@ const replyToTicket = async (req, res) => {
     if (String(ticket.status).toLowerCase() === "closed") {
       throw makeError(
         400,
-        "This ticket is closed and cannot receive new messages"
+        "This ticket is closed and cannot receive new messages",
       );
     }
 
@@ -712,14 +687,14 @@ const replyToTicket = async (req, res) => {
          attachment
        )
        VALUES (?, ?, ?, NULL)`,
-      [ticketId, adminId, message.trim()]
+      [ticketId, adminId, message.trim()],
     );
 
     await connection.query(
       `UPDATE support_tickets
        SET status = 'waiting_for_customer'
        WHERE id = ?`,
-      [ticketId]
+      [ticketId],
     );
 
     await connection.commit();
@@ -738,10 +713,7 @@ const replyToTicket = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error(
-        "Support reply notification error:",
-        notificationError
-      );
+      console.error("Support reply notification error:", notificationError);
     }
 
     return res.status(201).json({
@@ -776,6 +748,7 @@ const replyToTicket = async (req, res) => {
 };
 
 // ADMIN: Update ticket status.
+// ADMIN: Update ticket status with audit logging.
 const updateTicketStatus = async (req, res) => {
   let connection;
   let transactionStarted = false;
@@ -792,6 +765,13 @@ const updateTicketStatus = async (req, res) => {
       });
     }
 
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin authentication",
+      });
+    }
+
     if (
       typeof status !== "string" ||
       !allowedStatuses.includes(status.trim().toLowerCase())
@@ -805,7 +785,11 @@ const updateTicketStatus = async (req, res) => {
 
     const normalizedStatus = status.trim().toLowerCase();
 
+    // Prevent duplicate generic audit logs if the middleware is applied.
+    req.skipGenericAudit = true;
+
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
@@ -814,7 +798,7 @@ const updateTicketStatus = async (req, res) => {
        FROM support_tickets
        WHERE id = ?
        FOR UPDATE`,
-      [ticketId]
+      [ticketId],
     );
 
     if (tickets.length === 0) {
@@ -822,32 +806,65 @@ const updateTicketStatus = async (req, res) => {
     }
 
     const ticket = tickets[0];
+
     const previousStatus = String(ticket.status || "open").toLowerCase();
 
     if (previousStatus === normalizedStatus) {
-      throw makeError(
-        400,
-        `Ticket is already ${normalizedStatus}`
-      );
+      throw makeError(400, `Ticket is already ${normalizedStatus}`);
     }
 
+    // Preserve the original ticket status update.
     await connection.query(
       `UPDATE support_tickets
        SET status = ?
        WHERE id = ?`,
-      [normalizedStatus, ticketId]
+      [normalizedStatus, ticketId],
     );
 
+    const oldValues = {
+      status: previousStatus,
+    };
+
+    const newValues = {
+      status: normalizedStatus,
+    };
+
+    // Save the admin audit record inside the same transaction.
+    // If this insert fails, the status update will be rolled back.
+    await connection.query(
+      `INSERT INTO admin_audit_logs
+         (
+           admin_id,
+           action,
+           entity_type,
+           entity_id,
+           old_values,
+           new_values,
+           ip_address
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        adminId,
+        "PATCH /api/support/admin/tickets/:ticketId/status",
+        "support_tickets",
+        ticketId,
+        JSON.stringify(oldValues),
+        JSON.stringify(newValues),
+        (req.ip || "").slice(0, 45) || null,
+      ],
+    );
+
+    // Commit ticket status and audit record together.
     await connection.commit();
     transactionStarted = false;
 
+    // Preserve customer notification after a successful commit.
     try {
       await createNotification({
         userId: ticket.user_id,
         type: "support_ticket_status_updated",
         title: "Support ticket updated",
-        message:
-          `Your support ticket ${ticket.ticket_number} is now ${normalizedStatus.replace(/_/g, " ")}.`,
+        message: `Your support ticket ${ticket.ticket_number} is now ${normalizedStatus.replace(/_/g, " ")}.`,
         data: {
           ticket_id: ticketId,
           ticket_number: ticket.ticket_number,
@@ -856,10 +873,7 @@ const updateTicketStatus = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error(
-        "Ticket status notification error:",
-        notificationError
-      );
+      console.error("Ticket status notification error:", notificationError);
     }
 
     return res.status(200).json({
@@ -893,7 +907,6 @@ const updateTicketStatus = async (req, res) => {
     }
   }
 };
-
 module.exports = {
   createTicket,
   getMyTickets,

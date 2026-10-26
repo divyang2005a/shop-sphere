@@ -62,8 +62,7 @@ const createInventoryMovement = (req, res) => {
     !["stock_in", "stock_out"].includes(type) ||
     !Number.isInteger(qty) ||
     qty <= 0 ||
-    (variantId !== null &&
-      (!Number.isInteger(variantId) || variantId <= 0))
+    (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0))
   ) {
     return res.status(400).json({
       success: false,
@@ -130,11 +129,7 @@ const createInventoryMovement = (req, res) => {
 
         conn.commit((commitErr) => {
           if (commitErr) {
-            return fail(
-              500,
-              "Could not commit inventory update",
-              commitErr,
-            );
+            return fail(500, "Could not commit inventory update", commitErr);
           }
 
           finished = true;
@@ -142,7 +137,8 @@ const createInventoryMovement = (req, res) => {
 
           return res.status(201).json({
             success: true,
-            message: "Inventory movement recorded and stock updated successfully",
+            message:
+              "Inventory movement recorded and stock updated successfully",
             movement_id: movementId,
             product_id: productId,
             variant_id: variantId,
@@ -227,21 +223,17 @@ const createInventoryMovement = (req, res) => {
               userId,
             ];
 
-            conn.query(
-              movementSql,
-              movementValues,
-              (insertErr, result) => {
-                if (insertErr) {
-                  return fail(
-                    500,
-                    "Failed to record inventory movement",
-                    insertErr,
-                  );
-                }
+            conn.query(movementSql, movementValues, (insertErr, result) => {
+              if (insertErr) {
+                return fail(
+                  500,
+                  "Failed to record inventory movement",
+                  insertErr,
+                );
+              }
 
-                commit(result.insertId);
-              },
-            );
+              commit(result.insertId);
+            });
           },
         );
       });
@@ -253,11 +245,12 @@ const createInventoryMovement = (req, res) => {
 // This endpoint does not create an inventory movement record.
 const updateInventory = (req, res) => {
   const productId = Number(req.params.product_id);
-  const rawStock = req.body.stock_quantity;
+  const body = req.body || {};
+  const rawStock = body.stock_quantity;
   const stockQuantity = Number(rawStock);
 
   if (
-    !Number.isInteger(productId) ||
+    !Number.isSafeInteger(productId) ||
     productId <= 0 ||
     rawStock === undefined ||
     rawStock === null ||
@@ -267,27 +260,39 @@ const updateInventory = (req, res) => {
   ) {
     return res.status(400).json({
       success: false,
-      message: "Valid product ID and non-negative integer stock quantity are required",
+      message:
+        "Valid product ID and non-negative integer stock quantity are required",
     });
   }
 
-  const sql = `
-    UPDATE products
-    SET stock_quantity = ?,
-        stock_status = CASE
-          WHEN ? = 0 THEN 'out_of_stock'
-          ELSE 'in_stock'
-        END,
-        updated_at = NOW()
-    WHERE id = ?
-  `;
+  const adminId = req.user?.user_id ?? req.user?.id;
 
-  db.query(
-    sql,
-    [stockQuantity, stockQuantity, productId],
-    (err, result) => {
-      if (err) {
-        console.error("Update inventory error:", err);
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  // This controller writes its own audit record.
+  // Prevent duplicate logging from the generic middleware.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Inventory connection error:", connectionError);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update inventory",
+      });
+    }
+
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
+
+        console.error("Inventory transaction error:", transactionError);
 
         return res.status(500).json({
           success: false,
@@ -295,52 +300,152 @@ const updateInventory = (req, res) => {
         });
       }
 
-      if (result.affectedRows === 0) {
-        // A zero affectedRows value can also mean the value was unchanged.
-        db.query(
-          "SELECT id FROM products WHERE id = ?",
-          [productId],
-          (selectErr, rows) => {
-            if (selectErr) {
-              console.error("Product lookup error:", selectErr);
+      // Lock the product row and capture its current stock.
+      connection.query(
+        `SELECT id, stock_quantity, stock_status
+         FROM products
+         WHERE id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [productId],
+        (selectError, rows) => {
+          if (selectError) {
+            return connection.rollback(() => {
+              connection.release();
+
+              console.error(
+                "Fetch inventory before update error:",
+                selectError,
+              );
 
               return res.status(500).json({
                 success: false,
-                message: "Failed to verify product",
+                message: "Failed to fetch current inventory",
               });
-            }
+            });
+          }
 
-            if (rows.length === 0) {
+          if (!rows || rows.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
               return res.status(404).json({
                 success: false,
                 message: "Product not found",
               });
-            }
-
-            return res.status(200).json({
-              success: true,
-              message: "Inventory updated successfully",
-              data: {
-                product_id: productId,
-                stock_quantity: stockQuantity,
-              },
             });
-          },
-        );
+          }
 
-        return;
-      }
+          const oldProduct = rows[0];
 
-      return res.status(200).json({
-        success: true,
-        message: "Inventory updated successfully",
-        data: {
-          product_id: productId,
-          stock_quantity: stockQuantity,
+          const newStockStatus =
+            stockQuantity === 0 ? "out_of_stock" : "in_stock";
+
+          const oldValues = {
+            stock_quantity: oldProduct.stock_quantity,
+            stock_status: oldProduct.stock_status,
+          };
+
+          const newValues = {
+            stock_quantity: stockQuantity,
+            stock_status: newStockStatus,
+          };
+
+          connection.query(
+            `UPDATE products
+             SET stock_quantity = ?,
+                 stock_status = ?,
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [stockQuantity, newStockStatus, productId],
+            (updateError) => {
+              if (updateError) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  console.error("Update inventory error:", updateError);
+
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to update inventory",
+                  });
+                });
+              }
+
+              // Save the old and new stock in the audit table.
+              const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `;
+
+              connection.query(
+                auditSql,
+                [
+                  adminId,
+                  "PUT /api/admin/inventory/:product_id",
+                  "products",
+                  productId,
+                  JSON.stringify(oldValues),
+                  JSON.stringify(newValues),
+                  (req.ip || "").slice(0, 45) || null,
+                ],
+                (auditError) => {
+                  if (auditError) {
+                    return connection.rollback(() => {
+                      connection.release();
+
+                      console.error("Inventory audit log error:", auditError);
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Failed to save audit log; inventory update was rolled back",
+                      });
+                    });
+                  }
+
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release();
+
+                        console.error("Inventory commit error:", commitError);
+
+                        return res.status(500).json({
+                          success: false,
+                          message: "Failed to update inventory",
+                        });
+                      });
+                    }
+
+                    connection.release();
+
+                    return res.status(200).json({
+                      success: true,
+                      message: "Inventory updated successfully",
+                      data: {
+                        product_id: productId,
+                        stock_quantity: stockQuantity,
+                      },
+                    });
+                  });
+                },
+              );
+            },
+          );
         },
-      });
-    },
-  );
+      );
+    });
+  });
 };
 
 module.exports = {

@@ -1,8 +1,7 @@
 const db = require("../config/db");
 const { createNotification } = require("../services/notificationService");
 
-const getUserId = (req) =>
-  req.user?.user_id ?? req.user?.id ?? null;
+const getUserId = (req) => req.user?.user_id ?? req.user?.id ?? null;
 
 const isPositiveId = (value) => {
   const id = Number(value);
@@ -18,11 +17,7 @@ const makeError = (statusCode, message) => {
   return error;
 };
 
-const successfulPaymentStatuses = [
-  "paid",
-  "success",
-  "completed",
-];
+const successfulPaymentStatuses = ["paid", "success", "completed"];
 
 // ADMIN: Create refund record for an approved return.
 // This records the refund; it does not transfer money.
@@ -68,7 +63,7 @@ const createRefund = async (req, res) => {
        JOIN orders o ON o.id = r.order_id
        WHERE r.id = ?
        FOR UPDATE`,
-      [returnId]
+      [returnId],
     );
 
     if (returns.length === 0) {
@@ -78,10 +73,7 @@ const createRefund = async (req, res) => {
     const returnRecord = returns[0];
 
     if (returnRecord.return_status !== "approved") {
-      throw makeError(
-        400,
-        "Only approved return requests can be refunded"
-      );
+      throw makeError(400, "Only approved return requests can be refunded");
     }
 
     const [existingRefunds] = await connection.query(
@@ -89,25 +81,22 @@ const createRefund = async (req, res) => {
        FROM refunds
        WHERE return_id = ?
        LIMIT 1`,
-      [returnId]
+      [returnId],
     );
 
     if (existingRefunds.length > 0) {
-      throw makeError(
-        409,
-        "A refund record already exists for this return"
-      );
+      throw makeError(409, "A refund record already exists for this return");
     }
 
     // Require a real, successfully recorded payment.
     const orderPaymentStatus = String(
-      returnRecord.payment_status || ""
+      returnRecord.payment_status || "",
     ).toLowerCase();
 
     if (!successfulPaymentStatuses.includes(orderPaymentStatus)) {
       throw makeError(
         409,
-        "This order is not marked as paid. No refund was created."
+        "This order is not marked as paid. No refund was created.",
       );
     }
 
@@ -120,14 +109,14 @@ const createRefund = async (req, res) => {
        ORDER BY id DESC
        LIMIT 1
        FOR UPDATE`,
-      [returnRecord.order_id, returnRecord.user_id]
+      [returnRecord.order_id, returnRecord.user_id],
     );
 
     if (payments.length === 0) {
       throw makeError(
         409,
         "No successful payment record exists for this order. " +
-          "Record the actual payment first; no refund was created."
+          "Record the actual payment first; no refund was created.",
       );
     }
 
@@ -159,27 +148,22 @@ const createRefund = async (req, res) => {
       !Number.isFinite(itemTax) ||
       itemTax < 0
     ) {
-      throw makeError(
-        400,
-        "Invalid original item amount or return quantity"
-      );
+      throw makeError(400, "Invalid original item amount or return quantity");
     }
 
     const subtotal = money(
       unitPrice * returnQuantity -
-        (itemDiscount * returnQuantity) / orderedQuantity
+        (itemDiscount * returnQuantity) / orderedQuantity,
     );
 
-    const taxAmount = money(
-      (itemTax * returnQuantity) / orderedQuantity
-    );
+    const taxAmount = money((itemTax * returnQuantity) / orderedQuantity);
 
     const refundAmount = money(subtotal + taxAmount);
 
     if (refundAmount <= 0) {
       throw makeError(
         400,
-        "Calculated refund amount must be greater than zero"
+        "Calculated refund amount must be greater than zero",
       );
     }
 
@@ -190,7 +174,7 @@ const createRefund = async (req, res) => {
        WHERE payment_id = ?
          AND LOWER(COALESCE(status, 'pending'))
              IN ('pending', 'processing', 'completed')`,
-      [payment.id]
+      [payment.id],
     );
 
     const amountAlreadyRefunded = Number(totals[0].total_refunded || 0);
@@ -199,7 +183,7 @@ const createRefund = async (req, res) => {
     if (refundAmount > remainingAmount) {
       throw makeError(
         409,
-        `Refund amount exceeds the remaining refundable amount: ${remainingAmount.toFixed(2)}`
+        `Refund amount exceeds the remaining refundable amount: ${remainingAmount.toFixed(2)}`,
       );
     }
 
@@ -219,7 +203,7 @@ const createRefund = async (req, res) => {
         payment.id,
         refundAmount,
         returnRecord.reason,
-      ]
+      ],
     );
 
     const refundId = insertResult.insertId;
@@ -237,7 +221,7 @@ const createRefund = async (req, res) => {
         refundId,
         "Refund record created. Money has not been transferred by this API.",
         adminId,
-      ]
+      ],
     );
 
     await connection.commit();
@@ -248,8 +232,7 @@ const createRefund = async (req, res) => {
         userId: returnRecord.user_id,
         type: "refund_created",
         title: "Refund request recorded",
-        message:
-          `A refund record has been created for order ${returnRecord.order_number}.`,
+        message: `A refund record has been created for order ${returnRecord.order_number}.`,
         data: {
           refund_id: refundId,
           order_id: returnRecord.order_id,
@@ -260,10 +243,7 @@ const createRefund = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error(
-        "Refund creation notification error:",
-        notificationError
-      );
+      console.error("Refund creation notification error:", notificationError);
     }
 
     return res.status(201).json({
@@ -315,16 +295,11 @@ const getAdminRefunds = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(req.query.limit, 10) || 20)
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
     );
     const offset = (page - 1) * limit;
 
-    const allowedStatuses = [
-      "pending",
-      "processing",
-      "completed",
-      "failed",
-    ];
+    const allowedStatuses = ["pending", "processing", "completed", "failed"];
 
     const status =
       typeof req.query.status === "string"
@@ -364,14 +339,14 @@ const getAdminRefunds = async (req, res) => {
        ${whereClause}
        ORDER BY r.created_at DESC, r.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, limit, offset],
     );
 
     const [countRows] = await db.promise().query(
       `SELECT COUNT(*) AS total
        FROM refunds r
        ${whereClause}`,
-      params
+      params,
     );
 
     const total = Number(countRows[0].total);
@@ -411,10 +386,11 @@ const updateRefundStatus = async (req, res) => {
     const { status, note, refund_transaction_id } = req.body || {};
 
     if (!isPositiveId(refundId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid refund ID is required",
-      });
+      throw makeError(400, "Valid refund ID is required");
+    }
+
+    if (!adminId) {
+      throw makeError(401, "Invalid admin authentication");
     }
 
     const allowedStatuses = ["processing", "completed", "failed"];
@@ -455,10 +431,16 @@ const updateRefundStatus = async (req, res) => {
       });
     }
 
+    // This controller writes its own audit record inside
+    // the same transaction. Avoid a duplicate generic audit.
+    req.skipGenericAudit = true;
+
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
+    // Fetch and lock the refund record.
     const [refundRows] = await connection.query(
       `SELECT
          r.id,
@@ -468,13 +450,14 @@ const updateRefundStatus = async (req, res) => {
          r.amount,
          r.status,
          r.refund_transaction_id,
+         r.completed_at,
          o.order_number,
          o.user_id
        FROM refunds r
        JOIN orders o ON o.id = r.order_id
        WHERE r.id = ?
        FOR UPDATE`,
-      [refundId]
+      [refundId],
     );
 
     if (refundRows.length === 0) {
@@ -482,29 +465,21 @@ const updateRefundStatus = async (req, res) => {
     }
 
     const refund = refundRows[0];
+
     const previousStatus = String(refund.status || "pending").toLowerCase();
 
     if (previousStatus === "completed") {
-      throw makeError(
-        400,
-        "Completed refunds cannot be changed"
-      );
+      throw makeError(400, "Completed refunds cannot be changed");
     }
 
     if (previousStatus === normalizedStatus) {
-      throw makeError(
-        400,
-        `Refund is already ${normalizedStatus}`
-      );
+      throw makeError(400, `Refund is already ${normalizedStatus}`);
     }
 
-    if (
-      previousStatus === "failed" &&
-      normalizedStatus !== "processing"
-    ) {
+    if (previousStatus === "failed" && normalizedStatus !== "processing") {
       throw makeError(
         400,
-        "A failed refund must be moved to processing before another update"
+        "A failed refund must be moved to processing before another update",
       );
     }
 
@@ -513,8 +488,7 @@ const updateRefundStatus = async (req, res) => {
         ? refund_transaction_id.trim()
         : "";
 
-    const existingTransactionId =
-      refund.refund_transaction_id || "";
+    const existingTransactionId = refund.refund_transaction_id || "";
 
     const finalTransactionId =
       suppliedTransactionId || existingTransactionId || null;
@@ -522,7 +496,7 @@ const updateRefundStatus = async (req, res) => {
     if (normalizedStatus === "completed" && !finalTransactionId) {
       throw makeError(
         400,
-        "A refund transaction/reference ID is required before marking a refund completed"
+        "A refund transaction/reference ID is required before marking a refund completed",
       );
     }
 
@@ -530,6 +504,13 @@ const updateRefundStatus = async (req, res) => {
       typeof note === "string" && note.trim()
         ? note.trim()
         : `Refund status updated to ${normalizedStatus} by admin`;
+
+    // Capture the values before the update.
+    const oldValues = {
+      status: previousStatus,
+      refund_transaction_id: refund.refund_transaction_id || null,
+      completed_at: refund.completed_at || null,
+    };
 
     await connection.query(
       `UPDATE refunds
@@ -540,14 +521,10 @@ const updateRefundStatus = async (req, res) => {
              ELSE NULL
            END
        WHERE id = ?`,
-      [
-        normalizedStatus,
-        finalTransactionId,
-        normalizedStatus,
-        refundId,
-      ]
+      [normalizedStatus, finalTransactionId, normalizedStatus, refundId],
     );
 
+    // Preserve the existing refund status history.
     await connection.query(
       `INSERT INTO refund_status_history (
          refund_id,
@@ -557,25 +534,50 @@ const updateRefundStatus = async (req, res) => {
          changed_by
        )
        VALUES (?, ?, ?, ?, ?)`,
-      [
-        refundId,
-        previousStatus,
-        normalizedStatus,
-        normalizedNote,
-        adminId,
-      ]
+      [refundId, previousStatus, normalizedStatus, normalizedNote, adminId],
     );
 
+    // Record the admin's old and new refund values.
+    const newValues = {
+      status: normalizedStatus,
+      refund_transaction_id: finalTransactionId,
+      note: normalizedNote,
+    };
+
+    await connection.query(
+      `INSERT INTO admin_audit_logs
+         (
+           admin_id,
+           action,
+           entity_type,
+           entity_id,
+           old_values,
+           new_values,
+           ip_address
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        adminId,
+        "PATCH /api/admin/refunds/:refund_id/status",
+        "refunds",
+        refundId,
+        JSON.stringify(oldValues),
+        JSON.stringify(newValues),
+        (req.ip || "").slice(0, 45) || null,
+      ],
+    );
+
+    // Refund update, status history and audit log commit together.
     await connection.commit();
     transactionStarted = false;
 
+    // Notify only after the database transaction commits.
     try {
       await createNotification({
         userId: refund.user_id,
         type: "refund_status_updated",
         title: "Refund status updated",
-        message:
-          `Your refund for order ${refund.order_number} is now ${normalizedStatus}.`,
+        message: `Your refund for order ${refund.order_number} is now ${normalizedStatus}.`,
         data: {
           refund_id: refundId,
           order_id: refund.order_id,
@@ -586,10 +588,7 @@ const updateRefundStatus = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error(
-        "Refund status notification error:",
-        notificationError
-      );
+      console.error("Refund status notification error:", notificationError);
     }
 
     return res.status(200).json({
@@ -625,7 +624,6 @@ const updateRefundStatus = async (req, res) => {
     }
   }
 };
-
 // CUSTOMER: Get refunds belonging only to the logged-in user's orders.
 const getMyRefunds = async (req, res) => {
   try {
@@ -641,7 +639,7 @@ const getMyRefunds = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(req.query.limit, 10) || 20)
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
     );
     const offset = (page - 1) * limit;
 
@@ -662,7 +660,7 @@ const getMyRefunds = async (req, res) => {
        WHERE o.user_id = ?
        ORDER BY r.created_at DESC, r.id DESC
        LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
+      [userId, limit, offset],
     );
 
     const [countRows] = await db.promise().query(
@@ -670,7 +668,7 @@ const getMyRefunds = async (req, res) => {
        FROM refunds r
        JOIN orders o ON o.id = r.order_id
        WHERE o.user_id = ?`,
-      [userId]
+      [userId],
     );
 
     // Include status history for every refund returned.
@@ -680,7 +678,7 @@ const getMyRefunds = async (req, res) => {
          FROM refund_status_history
          WHERE refund_id = ?
          ORDER BY created_at ASC, id ASC`,
-        [refund.refund_id]
+        [refund.refund_id],
       );
 
       refund.status_history = history;

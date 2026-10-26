@@ -25,6 +25,8 @@ const {
   createBrand,
   updateBrand,
   deleteBrand,
+  getUserDetails,
+  deleteUser,
 } = require("../controllers/adminCatalogController");
 
 // Product and GST controllers
@@ -63,15 +65,11 @@ const {
   updateAdminOrderStatus,
 } = require("../controllers/adminOrderController");
 
-const {
-  getAdminOrderInvoice,
-} = require("../controllers/invoiceController");
+const { getAdminOrderInvoice } = require("../controllers/invoiceController");
 
 const { getAdminInvoicePdf } = require("../controllers/invoicePdfController");
 
-const {
-  getPackingSlipPdf,
-} = require("../controllers/packingSlipController");
+const { getPackingSlipPdf } = require("../controllers/packingSlipController");
 
 const {
   createCreditNote,
@@ -88,6 +86,12 @@ const {
   updateRefundStatus,
 } = require("../controllers/refundController");
 
+const {
+  createCoupon,
+  getCoupons,
+  updateCouponStatus,
+} = require("../controllers/couponController");
+
 // Dashboard
 router.get("/dashboard", authMiddleware, adminMiddleware, (req, res) => {
   res.status(200).json({
@@ -98,6 +102,20 @@ router.get("/dashboard", authMiddleware, adminMiddleware, (req, res) => {
 
 // Users
 router.get("/users", authMiddleware, adminMiddleware, getUsers);
+
+// Users
+router.get("/users", authMiddleware, adminMiddleware, getUsers);
+
+router.get("/users/:id", authMiddleware, adminMiddleware, getUserDetails);
+
+router.put(
+  "/users/:id/status",
+  authMiddleware,
+  adminMiddleware,
+  updateUserStatus,
+);
+
+router.delete("/users/:id", authMiddleware, adminMiddleware, deleteUser);
 
 router.put(
   "/users/:id/status",
@@ -239,6 +257,16 @@ router.put(
 
 router.delete("/brands/:id", authMiddleware, adminMiddleware, deleteBrand);
 
+// Coupons
+router.get("/coupons", authMiddleware, adminMiddleware, getCoupons);
+router.post("/coupons", authMiddleware, adminMiddleware, createCoupon);
+router.patch(
+  "/coupons/:id/status",
+  authMiddleware,
+  adminMiddleware,
+  updateCouponStatus,
+);
+
 // Inventory movements
 router.get(
   "/inventory/movements",
@@ -271,35 +299,35 @@ router.get(
   "/orders/:order_id",
   authMiddleware,
   adminMiddleware,
-  getAdminOrderById
+  getAdminOrderById,
 );
 
 router.patch(
   "/orders/:order_id/status",
   authMiddleware,
   adminMiddleware,
-  updateAdminOrderStatus
+  updateAdminOrderStatus,
 );
 
 router.get(
   "/orders/:order_id/invoice",
   authMiddleware,
   adminMiddleware,
-  getAdminOrderInvoice
+  getAdminOrderInvoice,
 );
 
 router.get(
   "/orders/:order_id/invoice/pdf",
   authMiddleware,
   adminMiddleware,
-  getAdminInvoicePdf
+  getAdminInvoicePdf,
 );
 
 router.get(
   "/orders/:order_id/packing-slip/pdf",
   authMiddleware,
   adminMiddleware,
-  getPackingSlipPdf
+  getPackingSlipPdf,
 );
 
 // Credit notes — admin only
@@ -307,21 +335,16 @@ router.post(
   "/returns/:return_id/credit-note",
   authMiddleware,
   adminMiddleware,
-  createCreditNote
+  createCreditNote,
 );
 
-router.get(
-  "/credit-notes",
-  authMiddleware,
-  adminMiddleware,
-  getCreditNotes
-);
+router.get("/credit-notes", authMiddleware, adminMiddleware, getCreditNotes);
 
 router.get(
   "/credit-notes/:creditNoteId/pdf",
   authMiddleware,
   adminMiddleware,
-  getAdminCreditNotePdf
+  getAdminCreditNotePdf,
 );
 
 // Refund management — admin only
@@ -329,21 +352,16 @@ router.post(
   "/returns/:return_id/refund",
   authMiddleware,
   adminMiddleware,
-  createRefund
+  createRefund,
 );
 
-router.get(
-  "/refunds",
-  authMiddleware,
-  adminMiddleware,
-  getAdminRefunds
-);
+router.get("/refunds", authMiddleware, adminMiddleware, getAdminRefunds);
 
 router.patch(
   "/refunds/:refund_id/status",
   authMiddleware,
   adminMiddleware,
-  updateRefundStatus
+  updateRefundStatus,
 );
 
 module.exports = router;

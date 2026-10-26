@@ -207,6 +207,7 @@ const createShipment = async (req, res) => {
 };
 
 // Admin: Update shipment status and add tracking event
+// Admin: Update shipment status, tracking event and audit log
 const updateShipmentStatus = async (req, res) => {
   let connection;
   let transactionStarted = false;
@@ -232,6 +233,13 @@ const updateShipmentStatus = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Valid shipment ID is required",
+      });
+    }
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin authentication",
       });
     }
 
@@ -262,7 +270,10 @@ const updateShipmentStatus = async (req, res) => {
     if (
       description !== undefined &&
       description !== null &&
-      (typeof description !== "string" || description.length > 1000)
+      (
+        typeof description !== "string" ||
+        description.length > 1000
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -270,14 +281,27 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
+    const normalizedLocation =
+      typeof location === "string" && location.trim()
+        ? location.trim()
+        : null;
+
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
+    // Lock shipment and retrieve its existing order status.
     const [shipments] = await connection.query(
-      `SELECT s.id, s.order_id, s.status,
-              s.tracking_number, s.courier_name,
-              o.user_id, o.order_number, o.order_status
+      `SELECT
+         s.id,
+         s.order_id,
+         s.status,
+         s.tracking_number,
+         s.courier_name,
+         o.user_id,
+         o.order_number,
+         o.order_status
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
        WHERE s.id = ?
@@ -292,7 +316,14 @@ const updateShipmentStatus = async (req, res) => {
     }
 
     const shipment = shipments[0];
-    const currentStatus = String(shipment.status || "pending").toLowerCase();
+
+    const currentStatus = String(
+      shipment.status || "pending"
+    ).toLowerCase();
+
+    const oldOrderStatus = String(
+      shipment.order_status
+    ).toLowerCase();
 
     if (currentStatus === normalizedStatus) {
       const error = new Error(
@@ -302,7 +333,7 @@ const updateShipmentStatus = async (req, res) => {
       throw error;
     }
 
-    if (String(shipment.order_status).toLowerCase() === "cancelled") {
+    if (oldOrderStatus === "cancelled") {
       const error = new Error(
         "Cannot update shipment for a cancelled order"
       );
@@ -310,9 +341,7 @@ const updateShipmentStatus = async (req, res) => {
       throw error;
     }
 
-    if (
-      ["delivered", "cancelled"].includes(currentStatus)
-    ) {
+    if (["delivered", "cancelled"].includes(currentStatus)) {
       const error = new Error(
         `Cannot update a shipment after it is ${currentStatus}`
       );
@@ -320,6 +349,7 @@ const updateShipmentStatus = async (req, res) => {
       throw error;
     }
 
+    // Update shipment and milestone timestamps.
     await connection.query(
       `UPDATE shipments
        SET status = ?,
@@ -347,21 +377,20 @@ const updateShipmentStatus = async (req, res) => {
         ? description.trim()
         : `Shipment status updated to ${normalizedStatus.replace(/_/g, " ")}`;
 
+    // Preserve the shipment tracking timeline.
     await connection.query(
       `INSERT INTO shipment_tracking
-        (shipment_id, status, location, description)
+         (shipment_id, status, location, description)
        VALUES (?, ?, ?, ?)`,
       [
         shipmentId,
         normalizedStatus,
-        typeof location === "string" && location.trim()
-          ? location.trim()
-          : null,
+        normalizedLocation,
         eventDescription,
       ]
     );
 
-    // Map shipment milestones to the existing order lifecycle.
+    // Keep the existing order lifecycle synchronization.
     let newOrderStatus = null;
 
     if (
@@ -373,8 +402,6 @@ const updateShipmentStatus = async (req, res) => {
     } else if (normalizedStatus === "delivered") {
       newOrderStatus = "delivered";
     }
-
-    const oldOrderStatus = String(shipment.order_status).toLowerCase();
 
     if (
       newOrderStatus &&
@@ -390,33 +417,76 @@ const updateShipmentStatus = async (req, res) => {
 
       await connection.query(
         `INSERT INTO order_status_history
-          (order_id, status, note, changed_by, created_at)
+           (order_id, status, note, changed_by, created_at)
          VALUES (?, ?, ?, ?, NOW())`,
         [
           shipment.order_id,
           newOrderStatus,
           `Shipment status updated to ${normalizedStatus.replace(/_/g, " ")}`,
-          adminId || null,
+          adminId,
         ]
       );
     }
 
+    const finalOrderStatus = newOrderStatus || oldOrderStatus;
+
+    // Capture previous and new values for the audit record.
+    const oldValues = {
+      status: currentStatus,
+      order_status: oldOrderStatus,
+    };
+
+    const newValues = {
+      status: normalizedStatus,
+      order_status: finalOrderStatus,
+      location: normalizedLocation,
+      description: eventDescription,
+    };
+
+    // Save audit log in the same transaction.
+    // If the audit insert fails, the status update is rolled back.
+    await connection.query(
+      `INSERT INTO admin_audit_logs
+         (
+           admin_id,
+           action,
+           entity_type,
+           entity_id,
+           old_values,
+           new_values,
+           ip_address
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        adminId,
+        "PATCH /api/shipments/admin/:shipmentId/status",
+        "shipments",
+        shipmentId,
+        JSON.stringify(oldValues),
+        JSON.stringify(newValues),
+        (req.ip || "").slice(0, 45) || null,
+      ]
+    );
+
+    // Commit shipment, tracking, order history and audit together.
     await connection.commit();
     transactionStarted = false;
 
+    // Notify the customer after the transaction succeeds.
     try {
       await createNotification({
         userId: shipment.user_id,
         type: "shipment_status_updated",
         title: "Shipment update",
-        message: `Your shipment for order ${shipment.order_number} is now ${normalizedStatus.replace(/_/g, " ")}.`,
+        message:
+          `Your shipment for order ${shipment.order_number} is now ${normalizedStatus.replace(/_/g, " ")}.`,
         data: {
           order_id: shipment.order_id,
           order_number: shipment.order_number,
           shipment_id: shipmentId,
           tracking_number: shipment.tracking_number,
           shipment_status: normalizedStatus,
-          order_status: newOrderStatus || oldOrderStatus,
+          order_status: finalOrderStatus,
         },
       });
     } catch (notificationError) {
@@ -434,7 +504,7 @@ const updateShipmentStatus = async (req, res) => {
         order_id: shipment.order_id,
         previous_status: currentStatus,
         shipment_status: normalizedStatus,
-        order_status: newOrderStatus || oldOrderStatus,
+        order_status: finalOrderStatus,
       },
     });
   } catch (error) {
@@ -442,7 +512,10 @@ const updateShipmentStatus = async (req, res) => {
       try {
         await connection.rollback();
       } catch (rollbackError) {
-        console.error("Shipment update rollback error:", rollbackError);
+        console.error(
+          "Shipment update rollback error:",
+          rollbackError
+        );
       }
     }
 

@@ -302,7 +302,6 @@ const createProduct = (req, res) => {
   );
 };
 
-
 const updateProduct = (req, res) => {
   const productId = Number(req.params.product_id);
   const body = req.body || {};
@@ -411,10 +410,7 @@ const updateProduct = (req, res) => {
     [productId],
     (selectError, rows) => {
       if (selectError) {
-        console.error(
-          "Fetch product before update error:",
-          selectError
-        );
+        console.error("Fetch product before update error:", selectError);
 
         return res.status(500).json({
           success: false,
@@ -492,23 +488,19 @@ const updateProduct = (req, res) => {
           ],
           (auditError) => {
             if (auditError) {
-              console.error(
-                "Product update audit log error:",
-                auditError
-              );
+              console.error("Product update audit log error:", auditError);
             }
 
             return res.status(200).json({
               success: true,
               message: "Product updated successfully",
             });
-          }
+          },
         );
       });
-    }
+    },
   );
 };
-
 
 const deleteProduct = (req, res) => {
   const productId = Number(req.params.product_id);
@@ -545,10 +537,7 @@ const deleteProduct = (req, res) => {
       if (transactionError) {
         connection.release();
 
-        console.error(
-          "Product delete transaction error:",
-          transactionError
-        );
+        console.error("Product delete transaction error:", transactionError);
 
         return res.status(500).json({
           success: false,
@@ -565,10 +554,7 @@ const deleteProduct = (req, res) => {
             return connection.rollback(() => {
               connection.release();
 
-              console.error(
-                "Fetch product before delete error:",
-                selectError
-              );
+              console.error("Fetch product before delete error:", selectError);
 
               return res.status(500).json({
                 success: false,
@@ -598,10 +584,7 @@ const deleteProduct = (req, res) => {
                 return connection.rollback(() => {
                   connection.release();
 
-                  console.error(
-                    "Delete product database error:",
-                    deleteError
-                  );
+                  console.error("Delete product database error:", deleteError);
 
                   return res.status(500).json({
                     success: false,
@@ -653,7 +636,7 @@ const deleteProduct = (req, res) => {
 
                       console.error(
                         "Product delete audit log error:",
-                        auditError
+                        auditError,
                       );
 
                       return res.status(500).json({
@@ -671,7 +654,7 @@ const deleteProduct = (req, res) => {
 
                         console.error(
                           "Product delete commit error:",
-                          commitError
+                          commitError,
                         );
 
                         return res.status(500).json({
@@ -688,11 +671,11 @@ const deleteProduct = (req, res) => {
                       message: "Product deleted successfully",
                     });
                   });
-                }
+                },
               );
-            }
+            },
           );
-        }
+        },
       );
     });
   });
@@ -898,131 +881,679 @@ const getProductVariants = (req, res) => {
 };
 
 const createProductVariant = (req, res) => {
-  const { product_id } = req.params;
-  const { sku, variant_name, price, stock_quantity, status } = req.body;
+  const productId = Number(req.params.product_id);
+  const body = req.body || {};
 
-  if (!sku || !variant_name || price === undefined) {
+  const { sku, variant_name, price, stock_quantity, status } = body;
+
+  const adminId = req.user?.user_id ?? req.user?.id;
+
+  // Validate product ID
+  if (!Number.isSafeInteger(productId) || productId <= 0) {
     return res.status(400).json({
       success: false,
-      message: "SKU, variant name and price are required",
+      message: "A valid product ID is required",
     });
   }
 
-  const sql = `
-    INSERT INTO product_variants (
-      product_id,
-      sku,
-      variant_name,
-      price,
-      stock_quantity,
-      status
-    )
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
+  // Validate required fields
+  if (
+    typeof sku !== "string" ||
+    !sku.trim() ||
+    typeof variant_name !== "string" ||
+    !variant_name.trim() ||
+    price === undefined ||
+    price === null ||
+    price === "" ||
+    !Number.isFinite(Number(price)) ||
+    Number(price) < 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "SKU, variant name and a valid price are required",
+    });
+  }
 
-  const values = [
-    product_id,
-    sku,
-    variant_name,
-    price,
-    stock_quantity ?? 0,
-    status ?? "active",
-  ];
+  const normalizedSku = sku.trim();
+  const normalizedVariantName = variant_name.trim();
+  const normalizedPrice = Number(price);
+  const normalizedStock = Number(stock_quantity ?? 0);
+  const normalizedStatus = status ?? "active";
 
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error(err);
+  if (!Number.isSafeInteger(normalizedStock) || normalizedStock < 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Stock quantity must be a non-negative integer",
+    });
+  }
+
+  if (
+    typeof normalizedStatus !== "string" ||
+    !["active", "inactive"].includes(normalizedStatus.toLowerCase())
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be active or inactive",
+    });
+  }
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  const finalStatus = normalizedStatus.toLowerCase();
+
+  // This controller creates its own audit record.
+  // Prevent duplicate logging by the generic middleware.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Create variant connection error:", connectionError);
+
       return res.status(500).json({
         success: false,
         message: "Failed to create product variant",
       });
     }
 
-    return res.status(201).json({
-      success: true,
-      message: "Product variant created successfully",
-      variant_id: result.insertId,
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
+
+        console.error("Create variant transaction error:", transactionError);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to start variant creation",
+        });
+      }
+
+      // Confirm the parent product exists.
+      connection.query(
+        "SELECT id FROM products WHERE id = ? LIMIT 1",
+        [productId],
+        (productError, products) => {
+          if (productError) {
+            return connection.rollback(() => {
+              connection.release();
+
+              console.error("Find product for variant error:", productError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to verify product",
+              });
+            });
+          }
+
+          if (!products || products.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(404).json({
+                success: false,
+                message: "Product not found",
+              });
+            });
+          }
+
+          const insertSql = `
+            INSERT INTO product_variants
+              (
+                product_id,
+                sku,
+                variant_name,
+                price,
+                stock_quantity,
+                status
+              )
+            VALUES (?, ?, ?, ?, ?, ?)
+          `;
+
+          const insertValues = [
+            productId,
+            normalizedSku,
+            normalizedVariantName,
+            normalizedPrice,
+            normalizedStock,
+            finalStatus,
+          ];
+
+          connection.query(insertSql, insertValues, (insertError, result) => {
+            if (insertError) {
+              return connection.rollback(() => {
+                connection.release();
+
+                console.error("Create product variant error:", insertError);
+
+                return res.status(500).json({
+                  success: false,
+                  message: "Failed to create product variant",
+                });
+              });
+            }
+
+            const variantId = result.insertId;
+
+            const newValues = {
+              id: variantId,
+              product_id: productId,
+              sku: normalizedSku,
+              variant_name: normalizedVariantName,
+              price: normalizedPrice,
+              stock_quantity: normalizedStock,
+              status: finalStatus,
+            };
+
+            const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, NULL, ?, ?)
+              `;
+
+            connection.query(
+              auditSql,
+              [
+                adminId,
+                "POST /api/admin/products/:product_id/variants",
+                "product_variants",
+                variantId,
+                JSON.stringify(newValues),
+                (req.ip || "").slice(0, 45) || null,
+              ],
+              (auditError) => {
+                if (auditError) {
+                  return connection.rollback(() => {
+                    connection.release();
+
+                    console.error("Create variant audit error:", auditError);
+
+                    return res.status(500).json({
+                      success: false,
+                      message:
+                        "Failed to save audit log; variant creation was rolled back",
+                    });
+                  });
+                }
+
+                connection.commit((commitError) => {
+                  if (commitError) {
+                    return connection.rollback(() => {
+                      connection.release();
+
+                      console.error(
+                        "Create variant commit error:",
+                        commitError,
+                      );
+
+                      return res.status(500).json({
+                        success: false,
+                        message: "Failed to create product variant",
+                      });
+                    });
+                  }
+
+                  connection.release();
+
+                  return res.status(201).json({
+                    success: true,
+                    message: "Product variant created successfully",
+                    variant_id: variantId,
+                  });
+                });
+              },
+            );
+          });
+        },
+      );
     });
   });
 };
 
 const updateProductVariant = (req, res) => {
-  const { id } = req.params;
-  const { sku, variant_name, price, stock_quantity, status } = req.body;
+  const productId = Number(req.params.product_id);
+  const variantId = Number(req.params.variant_id);
+  const body = req.body || {};
 
-  if (!sku || !variant_name || price === undefined) {
+  const { sku, variant_name, price, stock_quantity, status } = body;
+
+  if (
+    !Number.isSafeInteger(productId) ||
+    productId <= 0 ||
+    !Number.isSafeInteger(variantId) ||
+    variantId <= 0
+  ) {
     return res.status(400).json({
       success: false,
-      message: "SKU, variant name and price are required",
+      message: "Valid product ID and variant ID are required",
     });
   }
 
-  const sql = `
-    UPDATE product_variants
-    SET
-      sku = ?,
-      variant_name = ?,
-      price = ?,
-      stock_quantity = ?,
-      status = ?
-    WHERE id = ?
-  `;
+  if (
+    typeof sku !== "string" ||
+    !sku.trim() ||
+    typeof variant_name !== "string" ||
+    !variant_name.trim() ||
+    price === undefined ||
+    price === null ||
+    price === "" ||
+    !Number.isFinite(Number(price)) ||
+    Number(price) < 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "SKU, variant name and a valid price are required",
+    });
+  }
 
-  const values = [
-    sku,
-    variant_name,
-    price,
-    stock_quantity ?? 0,
-    status ?? "active",
-    id,
-  ];
+  const normalizedSku = sku.trim();
+  const normalizedVariantName = variant_name.trim();
+  const normalizedPrice = Number(price);
+  const normalizedStock = Number(stock_quantity ?? 0);
+  const normalizedStatus = status ?? "active";
+  const adminId = req.user?.user_id ?? req.user?.id;
 
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error(err);
+  if (!Number.isSafeInteger(normalizedStock) || normalizedStock < 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Stock quantity must be a non-negative integer",
+    });
+  }
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  if (
+    typeof normalizedStatus !== "string" ||
+    !["active", "inactive"].includes(normalizedStatus.toLowerCase())
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be active or inactive",
+    });
+  }
+
+  const finalStatus = normalizedStatus.toLowerCase();
+
+  // This controller creates its own audit entry.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Variant update connection error:", connectionError);
+
       return res.status(500).json({
         success: false,
         message: "Failed to update product variant",
       });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Variant not found or no changes made",
-      });
-    }
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
 
-    return res.status(200).json({
-      success: true,
-      message: "Product variant updated successfully",
+        console.error("Variant update transaction error:", transactionError);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to start variant update",
+        });
+      }
+
+      connection.query(
+        `SELECT id, product_id, sku, variant_name, price,
+                stock_quantity, status
+         FROM product_variants
+         WHERE id = ? AND product_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [variantId, productId],
+        (selectError, rows) => {
+          if (selectError) {
+            return connection.rollback(() => {
+              connection.release();
+              console.error("Fetch variant error:", selectError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to fetch product variant",
+              });
+            });
+          }
+
+          if (!rows || rows.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(404).json({
+                success: false,
+                message: "Product variant not found",
+              });
+            });
+          }
+
+          const oldVariant = rows[0];
+
+          const oldValues = {
+            product_id: oldVariant.product_id,
+            sku: oldVariant.sku,
+            variant_name: oldVariant.variant_name,
+            price: oldVariant.price,
+            stock_quantity: oldVariant.stock_quantity,
+            status: oldVariant.status,
+          };
+
+          const newValues = {
+            product_id: productId,
+            sku: normalizedSku,
+            variant_name: normalizedVariantName,
+            price: normalizedPrice,
+            stock_quantity: normalizedStock,
+            status: finalStatus,
+          };
+
+          connection.query(
+            `UPDATE product_variants
+             SET sku = ?,
+                 variant_name = ?,
+                 price = ?,
+                 stock_quantity = ?,
+                 status = ?
+             WHERE id = ? AND product_id = ?`,
+            [
+              normalizedSku,
+              normalizedVariantName,
+              normalizedPrice,
+              normalizedStock,
+              finalStatus,
+              variantId,
+              productId,
+            ],
+            (updateError) => {
+              if (updateError) {
+                return connection.rollback(() => {
+                  connection.release();
+                  console.error("Update variant error:", updateError);
+
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to update product variant",
+                  });
+                });
+              }
+
+              const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `;
+
+              connection.query(
+                auditSql,
+                [
+                  adminId,
+                  "PUT /api/admin/products/:product_id/variants/:variant_id",
+                  "product_variants",
+                  variantId,
+                  JSON.stringify(oldValues),
+                  JSON.stringify(newValues),
+                  (req.ip || "").slice(0, 45) || null,
+                ],
+                (auditError) => {
+                  if (auditError) {
+                    return connection.rollback(() => {
+                      connection.release();
+                      console.error("Variant audit error:", auditError);
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Failed to save audit log; variant update was rolled back",
+                      });
+                    });
+                  }
+
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release();
+                        console.error("Variant commit error:", commitError);
+
+                        return res.status(500).json({
+                          success: false,
+                          message: "Failed to update product variant",
+                        });
+                      });
+                    }
+
+                    connection.release();
+
+                    return res.status(200).json({
+                      success: true,
+                      message: "Product variant updated successfully",
+                    });
+                  });
+                },
+              );
+            },
+          );
+        },
+      );
     });
   });
 };
 
 const deleteProductVariant = (req, res) => {
-  const { id } = req.params;
-  const sql = "DELETE FROM product_variants WHERE id = ?";
+  const productId = Number(req.params.product_id);
+  const variantId = Number(req.params.variant_id);
+  const adminId = req.user?.user_id ?? req.user?.id;
 
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error(err);
+  if (
+    !Number.isSafeInteger(productId) ||
+    productId <= 0 ||
+    !Number.isSafeInteger(variantId) ||
+    variantId <= 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Valid product ID and variant ID are required",
+    });
+  }
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  // This controller creates its own audit entry.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Variant delete connection error:", connectionError);
+
       return res.status(500).json({
         success: false,
         message: "Failed to delete product variant",
       });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Product variant not found",
-      });
-    }
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
 
-    return res.status(200).json({
-      success: true,
-      message: "Product variant deleted successfully",
+        console.error("Variant delete transaction error:", transactionError);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to start variant deletion",
+        });
+      }
+
+      connection.query(
+        `SELECT id, product_id, sku, variant_name, price,
+                stock_quantity, status
+         FROM product_variants
+         WHERE id = ? AND product_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [variantId, productId],
+        (selectError, rows) => {
+          if (selectError) {
+            return connection.rollback(() => {
+              connection.release();
+              console.error("Fetch variant before delete error:", selectError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to fetch product variant",
+              });
+            });
+          }
+
+          if (!rows || rows.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(404).json({
+                success: false,
+                message: "Product variant not found",
+              });
+            });
+          }
+
+          const oldVariant = rows[0];
+
+          const oldValues = {
+            product_id: oldVariant.product_id,
+            sku: oldVariant.sku,
+            variant_name: oldVariant.variant_name,
+            price: oldVariant.price,
+            stock_quantity: oldVariant.stock_quantity,
+            status: oldVariant.status,
+          };
+
+          connection.query(
+            `DELETE FROM product_variants
+             WHERE id = ? AND product_id = ?`,
+            [variantId, productId],
+            (deleteError, result) => {
+              if (deleteError) {
+                return connection.rollback(() => {
+                  connection.release();
+                  console.error("Delete variant error:", deleteError);
+
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to delete product variant",
+                  });
+                });
+              }
+
+              if (!result.affectedRows) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  return res.status(404).json({
+                    success: false,
+                    message: "Product variant not found",
+                  });
+                });
+              }
+
+              const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, ?, NULL, ?)
+              `;
+
+              connection.query(
+                auditSql,
+                [
+                  adminId,
+                  "DELETE /api/admin/products/:product_id/variants/:variant_id",
+                  "product_variants",
+                  variantId,
+                  JSON.stringify(oldValues),
+                  (req.ip || "").slice(0, 45) || null,
+                ],
+                (auditError) => {
+                  if (auditError) {
+                    return connection.rollback(() => {
+                      connection.release();
+                      console.error("Variant delete audit error:", auditError);
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Failed to save audit log; variant deletion was rolled back",
+                      });
+                    });
+                  }
+
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release();
+                        console.error(
+                          "Variant delete commit error:",
+                          commitError,
+                        );
+
+                        return res.status(500).json({
+                          success: false,
+                          message: "Failed to delete product variant",
+                        });
+                      });
+                    }
+
+                    connection.release();
+
+                    return res.status(200).json({
+                      success: true,
+                      message: "Product variant deleted successfully",
+                    });
+                  });
+                },
+              );
+            },
+          );
+        },
+      );
     });
   });
 };

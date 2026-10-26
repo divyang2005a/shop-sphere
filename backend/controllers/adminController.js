@@ -75,9 +75,7 @@ const getProducts = (req, res) => {
       });
     }
 
-    conditions.push(
-      `(LOWER(c.name) = LOWER(?) OR LOWER(c.slug) = LOWER(?))`
-    );
+    conditions.push(`(LOWER(c.name) = LOWER(?) OR LOWER(c.slug) = LOWER(?))`);
     values.push(category.trim(), category.trim());
   }
 
@@ -119,7 +117,7 @@ const getProducts = (req, res) => {
     const term = `%${search.trim()}%`;
 
     conditions.push(
-      "(p.title LIKE ? OR p.sku LIKE ? OR p.product_code LIKE ?)"
+      "(p.title LIKE ? OR p.sku LIKE ? OR p.product_code LIKE ?)",
     );
     values.push(term, term, term);
   }
@@ -244,27 +242,23 @@ const getProducts = (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    db.query(
-      sql,
-      [...values, Number(limit), offset],
-      (err, results) => {
-        if (err) {
-          return handleDbError(err, res, "Failed to fetch products");
-        }
-
-        return res.status(200).json({
-          success: true,
-          count: results.length,
-          pagination: {
-            page: Number(page),
-            limit: Number(limit),
-            total,
-            total_pages: Math.ceil(total / Number(limit)),
-          },
-          products: results,
-        });
+    db.query(sql, [...values, Number(limit), offset], (err, results) => {
+      if (err) {
+        return handleDbError(err, res, "Failed to fetch products");
       }
-    );
+
+      return res.status(200).json({
+        success: true,
+        count: results.length,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          total_pages: Math.ceil(total / Number(limit)),
+        },
+        products: results,
+      });
+    });
   });
 };
 
@@ -869,12 +863,48 @@ const getProductImages = (req, res) => {
 
 // Add product image
 const addProductImage = (req, res) => {
-  const { product_id } = req.params;
+  const productId = Number(req.params.product_id);
   const body = req.body || {};
+  const adminId = req.user?.user_id ?? req.user?.id;
 
-  const image_type = body.image_type || "gallery";
-  const is_primary = Number(body.is_primary) === 1 ? 1 : 0;
-  const sort_order = Number(body.sort_order ?? 0);
+  const cleanupUploadedFile = () => {
+    if (req.file?.path) {
+      fs.unlink(req.file.path, (err) => {
+        if (err && err.code !== "ENOENT") {
+          console.error("Uploaded image cleanup error:", err);
+        }
+      });
+    }
+  };
+
+  if (!Number.isSafeInteger(productId) || productId <= 0) {
+    cleanupUploadedFile();
+
+    return res.status(400).json({
+      success: false,
+      message: "Valid product ID is required",
+    });
+  }
+
+  if (!adminId) {
+    cleanupUploadedFile();
+
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: "Please select an image file",
+    });
+  }
+
+  const imageType = body.image_type || "gallery";
+  const isPrimary = Number(body.is_primary) === 1 ? 1 : 0;
+  const sortOrder = Number(body.sort_order ?? 0);
 
   const allowedImageTypes = [
     "main",
@@ -886,128 +916,373 @@ const addProductImage = (req, res) => {
     "detail",
   ];
 
-  if (!isPositiveId(product_id)) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({
-      success: false,
-      message: "A valid product ID is required",
-    });
-  }
+  if (typeof imageType !== "string" || !allowedImageTypes.includes(imageType)) {
+    cleanupUploadedFile();
 
-  if (!req.file) {
     return res.status(400).json({
       success: false,
-      message: "Please select an image file using the form-data field 'image'",
-    });
-  }
-
-  if (
-    !allowedImageTypes.includes(image_type) ||
-    !Number.isInteger(sort_order) ||
-    sort_order < 0
-  ) {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({
-      success: false,
-      message: "Invalid image_type or sort_order",
+      message: "Invalid image type",
       allowed_types: allowedImageTypes,
+    });
+  }
+
+  if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+    cleanupUploadedFile();
+
+    return res.status(400).json({
+      success: false,
+      message: "Sort order must be a non-negative integer",
     });
   }
 
   const imagePath = `/uploads/products/${req.file.filename}`;
 
-  const sql = `
-    INSERT INTO product_images
-      (product_id, image, image_type, is_primary, sort_order)
-    VALUES (?, ?, ?, ?, ?)
-  `;
+  // This controller creates its own audit entry.
+  req.skipGenericAudit = true;
 
-  db.query(
-    sql,
-    [product_id, imagePath, image_type, is_primary, sort_order],
-    (err, result) => {
-      if (err) {
-        fs.unlink(req.file.path, () => {});
-        return handleDbError(err, res, "Failed to add product image");
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      cleanupUploadedFile();
+      console.error("Product image connection error:", connectionError);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to add product image",
+      });
+    }
+
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
+        cleanupUploadedFile();
+
+        console.error("Product image transaction error:", transactionError);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to add product image",
+        });
       }
 
-      return res.status(201).json({
-        success: true,
-        message: "Product image added successfully",
-        image: {
-          id: result.insertId,
-          product_id: Number(product_id),
-          image: imagePath,
-          image_type,
-          is_primary,
-          sort_order,
+      const insertSql = `
+        INSERT INTO product_images
+          (product_id, image, image_type, is_primary, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+
+      connection.query(
+        insertSql,
+        [productId, imagePath, imageType, isPrimary, sortOrder],
+        (insertError, result) => {
+          if (insertError) {
+            return connection.rollback(() => {
+              connection.release();
+              cleanupUploadedFile();
+
+              console.error("Insert product image error:", insertError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to add product image",
+              });
+            });
+          }
+
+          const imageId = result.insertId;
+
+          const newValues = {
+            id: imageId,
+            product_id: productId,
+            image: imagePath,
+            image_type: imageType,
+            is_primary: isPrimary,
+            sort_order: sortOrder,
+          };
+
+          const auditSql = `
+            INSERT INTO admin_audit_logs
+              (
+                admin_id,
+                action,
+                entity_type,
+                entity_id,
+                old_values,
+                new_values,
+                ip_address
+              )
+            VALUES (?, ?, ?, ?, NULL, ?, ?)
+          `;
+
+          connection.query(
+            auditSql,
+            [
+              adminId,
+              "POST /api/admin/products/:product_id/images",
+              "product_images",
+              imageId,
+              JSON.stringify(newValues),
+              (req.ip || "").slice(0, 45) || null,
+            ],
+            (auditError) => {
+              if (auditError) {
+                return connection.rollback(() => {
+                  connection.release();
+                  cleanupUploadedFile();
+
+                  console.error("Product image audit error:", auditError);
+
+                  return res.status(500).json({
+                    success: false,
+                    message:
+                      "Failed to save audit log; image insertion was rolled back",
+                  });
+                });
+              }
+
+              connection.commit((commitError) => {
+                if (commitError) {
+                  return connection.rollback(() => {
+                    connection.release();
+                    cleanupUploadedFile();
+
+                    console.error("Product image commit error:", commitError);
+
+                    return res.status(500).json({
+                      success: false,
+                      message: "Failed to add product image",
+                    });
+                  });
+                }
+
+                connection.release();
+
+                return res.status(201).json({
+                  success: true,
+                  message: "Product image added successfully",
+                  image: newValues,
+                });
+              });
+            },
+          );
         },
-      });
-    },
-  );
+      );
+    });
+  });
 };
 
 // Delete product image
 const deleteProductImage = (req, res) => {
-  const { image_id } = req.params;
+  const productId = Number(req.params.product_id);
+  const imageId = Number(req.params.image_id);
+  const adminId = req.user?.user_id ?? req.user?.id;
 
-  if (!isPositiveId(image_id)) {
+  if (
+    !Number.isSafeInteger(productId) ||
+    productId <= 0 ||
+    !Number.isSafeInteger(imageId) ||
+    imageId <= 0
+  ) {
     return res.status(400).json({
       success: false,
-      message: "A valid image ID is required",
+      message: "Valid product ID and image ID are required",
     });
   }
 
-  db.query(
-    "SELECT image FROM product_images WHERE id = ?",
-    [image_id],
-    (err, rows) => {
-      if (err) {
-        return handleDbError(err, res, "Failed to find product image");
-      }
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
 
-      if (rows.length === 0) {
-        return res.status(404).json({
+  // This controller creates its own audit entry.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Delete image connection error:", connectionError);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete product image",
+      });
+    }
+
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
+
+        console.error("Delete image transaction error:", transactionError);
+
+        return res.status(500).json({
           success: false,
-          message: "Product image not found",
+          message: "Failed to delete product image",
         });
       }
 
-      const imagePath = rows[0].image;
+      // Ensure the image belongs to the product in the URL.
+      connection.query(
+        `SELECT id, product_id, image, image_type, is_primary, sort_order
+         FROM product_images
+         WHERE id = ? AND product_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [imageId, productId],
+        (selectError, rows) => {
+          if (selectError) {
+            return connection.rollback(() => {
+              connection.release();
 
-      db.query(
-        "DELETE FROM product_images WHERE id = ?",
-        [image_id],
-        (deleteErr) => {
-          if (deleteErr) {
-            return handleDbError(
-              deleteErr,
-              res,
-              "Failed to delete product image",
-            );
+              console.error("Fetch product image error:", selectError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to find product image",
+              });
+            });
           }
 
-          const filename = path.basename(imagePath);
-          const filePath = path.join(
-            __dirname,
-            "../uploads/products",
-            filename,
+          if (!rows || rows.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(404).json({
+                success: false,
+                message: "Product image not found",
+              });
+            });
+          }
+
+          const oldImage = rows[0];
+
+          const oldValues = {
+            id: oldImage.id,
+            product_id: oldImage.product_id,
+            image: oldImage.image,
+            image_type: oldImage.image_type,
+            is_primary: oldImage.is_primary,
+            sort_order: oldImage.sort_order,
+          };
+
+          connection.query(
+            `DELETE FROM product_images
+             WHERE id = ? AND product_id = ?`,
+            [imageId, productId],
+            (deleteError, result) => {
+              if (deleteError) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  console.error(
+                    "Delete product image database error:",
+                    deleteError,
+                  );
+
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to delete product image",
+                  });
+                });
+              }
+
+              if (!result.affectedRows) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  return res.status(404).json({
+                    success: false,
+                    message: "Product image not found",
+                  });
+                });
+              }
+
+              const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, ?, NULL, ?)
+              `;
+
+              connection.query(
+                auditSql,
+                [
+                  adminId,
+                  "DELETE /api/admin/products/:product_id/images/:image_id",
+                  "product_images",
+                  imageId,
+                  JSON.stringify(oldValues),
+                  (req.ip || "").slice(0, 45) || null,
+                ],
+                (auditError) => {
+                  if (auditError) {
+                    return connection.rollback(() => {
+                      connection.release();
+
+                      console.error("Delete image audit error:", auditError);
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Failed to save audit log; image deletion was rolled back",
+                      });
+                    });
+                  }
+
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release();
+
+                        console.error(
+                          "Delete image commit error:",
+                          commitError,
+                        );
+
+                        return res.status(500).json({
+                          success: false,
+                          message: "Failed to delete product image",
+                        });
+                      });
+                    }
+
+                    connection.release();
+
+                    // Remove the physical file only after the database
+                    // transaction succeeds.
+                    const filename = path.basename(oldImage.image);
+
+                    const filePath = path.join(
+                      __dirname,
+                      "../uploads/products",
+                      filename,
+                    );
+
+                    fs.unlink(filePath, (fileError) => {
+                      if (fileError && fileError.code !== "ENOENT") {
+                        console.error("Image file delete failed:", fileError);
+                      }
+
+                      return res.status(200).json({
+                        success: true,
+                        message: "Product image deleted successfully",
+                      });
+                    });
+                  });
+                },
+              );
+            },
           );
-
-          fs.unlink(filePath, (fileErr) => {
-            if (fileErr && fileErr.code !== "ENOENT") {
-              console.error("Image file delete failed:", fileErr);
-            }
-          });
-
-          return res.status(200).json({
-            success: true,
-            message: "Product image deleted successfully",
-          });
         },
       );
-    },
-  );
+    });
+  });
 };
 
 // Get product variants
@@ -1251,42 +1526,241 @@ const getReturnRequests = (req, res) => {
 };
 
 const updateReturnStatus = (req, res) => {
-  const { return_id } = req.params;
-  const { status, admin_note } = req.body;
+  const returnId = Number(req.params.return_id);
+  const { status, admin_note } = req.body || {};
 
-  if (!["approved", "rejected"].includes(status)) {
+  // Validate return ID
+  if (!Number.isSafeInteger(returnId) || returnId <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "A valid return ID is required",
+    });
+  }
+
+  // Preserve existing allowed statuses
+  if (
+    typeof status !== "string" ||
+    !["approved", "rejected"].includes(status)
+  ) {
     return res.status(400).json({
       success: false,
       message: "Status must be approved or rejected",
     });
   }
 
-  const sql = `
-    UPDATE order_returns
-    SET status = ?, admin_note = ?
-    WHERE id = ? AND status = 'pending'
-  `;
+  if (
+    admin_note !== undefined &&
+    admin_note !== null &&
+    typeof admin_note !== "string"
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Admin note must be a string",
+    });
+  }
 
-  db.query(sql, [status, admin_note || null, return_id], (err, result) => {
-    if (err) {
-      return handleDbError(err, res, "Failed to update return status");
-    }
+  const normalizedNote =
+    typeof admin_note === "string" && admin_note.trim()
+      ? admin_note.trim()
+      : null;
 
-    if (result.affectedRows === 0) {
-      return res.status(400).json({
+  const adminId = req.user?.user_id ?? req.user?.id;
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  // This controller creates its own audit entry.
+  // Prevent duplicate generic audit records.
+  req.skipGenericAudit = true;
+
+  db.getConnection((connectionError, connection) => {
+    if (connectionError) {
+      console.error("Return update connection error:", connectionError);
+
+      return res.status(500).json({
         success: false,
-        message: "Return request not found or already processed",
+        message: "Failed to update return status",
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      message: `Return request ${status} successfully`,
-      data: {
-        return_id: Number(return_id),
-        status,
-        admin_note: admin_note || null,
-      },
+    connection.beginTransaction((transactionError) => {
+      if (transactionError) {
+        connection.release();
+
+        console.error("Return update transaction error:", transactionError);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to start return update",
+        });
+      }
+
+      // Lock the return record and capture its current values.
+      connection.query(
+        `SELECT id, order_id, order_item_id, user_id,
+                quantity, reason, status, admin_note
+         FROM order_returns
+         WHERE id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [returnId],
+        (selectError, rows) => {
+          if (selectError) {
+            return connection.rollback(() => {
+              connection.release();
+
+              console.error("Fetch return before update error:", selectError);
+
+              return res.status(500).json({
+                success: false,
+                message: "Failed to fetch return request",
+              });
+            });
+          }
+
+          if (!rows || rows.length === 0) {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(400).json({
+                success: false,
+                message: "Return request not found or already processed",
+              });
+            });
+          }
+
+          const oldReturn = rows[0];
+
+          if (oldReturn.status !== "pending") {
+            return connection.rollback(() => {
+              connection.release();
+
+              return res.status(400).json({
+                success: false,
+                message: "Return request not found or already processed",
+              });
+            });
+          }
+
+          const oldValues = {
+            status: oldReturn.status,
+            admin_note: oldReturn.admin_note,
+          };
+
+          const newValues = {
+            status,
+            admin_note: normalizedNote,
+          };
+
+          connection.query(
+            `UPDATE order_returns
+             SET status = ?, admin_note = ?
+             WHERE id = ? AND status = 'pending'`,
+            [status, normalizedNote, returnId],
+            (updateError, result) => {
+              if (updateError) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  console.error("Update return status error:", updateError);
+
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to update return status",
+                  });
+                });
+              }
+
+              if (result.affectedRows === 0) {
+                return connection.rollback(() => {
+                  connection.release();
+
+                  return res.status(400).json({
+                    success: false,
+                    message: "Return request not found or already processed",
+                  });
+                });
+              }
+
+              const auditSql = `
+                INSERT INTO admin_audit_logs
+                  (
+                    admin_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    old_values,
+                    new_values,
+                    ip_address
+                  )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `;
+
+              connection.query(
+                auditSql,
+                [
+                  adminId,
+                  "PUT /api/admin/returns/:return_id",
+                  "order_returns",
+                  returnId,
+                  JSON.stringify(oldValues),
+                  JSON.stringify(newValues),
+                  (req.ip || "").slice(0, 45) || null,
+                ],
+                (auditError) => {
+                  if (auditError) {
+                    return connection.rollback(() => {
+                      connection.release();
+
+                      console.error("Return audit log error:", auditError);
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Failed to save audit log; return update was rolled back",
+                      });
+                    });
+                  }
+
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release();
+
+                        console.error(
+                          "Return update commit error:",
+                          commitError,
+                        );
+
+                        return res.status(500).json({
+                          success: false,
+                          message: "Failed to update return status",
+                        });
+                      });
+                    }
+
+                    connection.release();
+
+                    return res.status(200).json({
+                      success: true,
+                      message: `Return request ${status} successfully`,
+                      data: {
+                        return_id: returnId,
+                        status,
+                        admin_note: normalizedNote,
+                      },
+                    });
+                  });
+                },
+              );
+            },
+          );
+        },
+      );
     });
   });
 };

@@ -121,7 +121,7 @@ const updateUserStatus = (req, res) => {
         return handleDatabaseError(
           selectError,
           res,
-          "Failed to fetch user before status update"
+          "Failed to fetch user before status update",
         );
       }
 
@@ -144,7 +144,7 @@ const updateUserStatus = (req, res) => {
             return handleDatabaseError(
               updateError,
               res,
-              "Failed to update user status"
+              "Failed to update user status",
             );
           }
 
@@ -174,10 +174,7 @@ const updateUserStatus = (req, res) => {
 
           db.query(auditSql, auditValues, (auditError) => {
             if (auditError) {
-              console.error(
-                "User status audit log error:",
-                auditError
-              );
+              console.error("User status audit log error:", auditError);
             }
 
             return res.status(200).json({
@@ -185,9 +182,9 @@ const updateUserStatus = (req, res) => {
               message: "User status updated successfully",
             });
           });
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -213,11 +210,7 @@ const getCategories = (req, res) => {
 
   db.query(sql, (err, categories) => {
     if (err) {
-      return handleDatabaseError(
-        err,
-        res,
-        "Failed to fetch categories"
-      );
+      return handleDatabaseError(err, res, "Failed to fetch categories");
     }
 
     return res.status(200).json({
@@ -274,21 +267,10 @@ const createCategory = (req, res) => {
 
   db.query(
     sql,
-    [
-      parentId,
-      name,
-      slug,
-      body.description || null,
-      image,
-      status,
-    ],
+    [parentId, name, slug, body.description || null, image, status],
     (err, result) => {
       if (err) {
-        return handleDatabaseError(
-          err,
-          res,
-          "Failed to create category"
-        );
+        return handleDatabaseError(err, res, "Failed to create category");
       }
 
       return res.status(201).json({
@@ -298,7 +280,7 @@ const createCategory = (req, res) => {
         slug,
         image,
       });
-    }
+    },
   );
 };
 
@@ -370,7 +352,7 @@ const updateCategory = (req, res) => {
         return handleDatabaseError(
           selectError,
           res,
-          "Failed to fetch category before update"
+          "Failed to fetch category before update",
         );
       }
 
@@ -430,7 +412,7 @@ const updateCategory = (req, res) => {
             return handleDatabaseError(
               updateError,
               res,
-              "Failed to update category"
+              "Failed to update category",
             );
           }
 
@@ -461,10 +443,7 @@ const updateCategory = (req, res) => {
             ],
             (auditError) => {
               if (auditError) {
-                console.error(
-                  "Category audit log error:",
-                  auditError
-                );
+                console.error("Category audit log error:", auditError);
               }
 
               return res.status(200).json({
@@ -472,11 +451,11 @@ const updateCategory = (req, res) => {
                 message: "Category updated successfully",
                 slug,
               });
-            }
+            },
           );
-        }
+        },
       );
-    }
+    },
   );
 };
 
@@ -531,10 +510,7 @@ const deleteRecord = (table, label, req, res) => {
       if (transactionError) {
         connection.release();
 
-        console.error(
-          "Delete transaction error:",
-          transactionError
-        );
+        console.error("Delete transaction error:", transactionError);
 
         return res.status(500).json({
           success: false,
@@ -553,7 +529,7 @@ const deleteRecord = (table, label, req, res) => {
               return handleDatabaseError(
                 selectError,
                 res,
-                `Failed to fetch ${label} before deletion`
+                `Failed to fetch ${label} before deletion`,
               );
             });
           }
@@ -582,7 +558,7 @@ const deleteRecord = (table, label, req, res) => {
                   return handleDatabaseError(
                     deleteError,
                     res,
-                    `Failed to delete ${label}`
+                    `Failed to delete ${label}`,
                   );
                 });
               }
@@ -598,9 +574,11 @@ const deleteRecord = (table, label, req, res) => {
                 });
               }
 
-              const action = (
-                `DELETE ${req.baseUrl}${req.route?.path || req.path}`
-              ).slice(0, 100);
+              const action =
+                `DELETE ${req.baseUrl}${req.route?.path || req.path}`.slice(
+                  0,
+                  100,
+                );
 
               const auditSql = `
                 INSERT INTO admin_audit_logs
@@ -631,10 +609,7 @@ const deleteRecord = (table, label, req, res) => {
                     return connection.rollback(() => {
                       connection.release();
 
-                      console.error(
-                        "Delete audit log error:",
-                        auditError
-                      );
+                      console.error("Delete audit log error:", auditError);
 
                       return res.status(500).json({
                         success: false,
@@ -651,7 +626,7 @@ const deleteRecord = (table, label, req, res) => {
 
                         console.error(
                           "Delete transaction commit error:",
-                          commitError
+                          commitError,
                         );
 
                         return res.status(500).json({
@@ -668,11 +643,11 @@ const deleteRecord = (table, label, req, res) => {
                       message: `${label[0].toUpperCase()}${label.slice(1)} deleted successfully`,
                     });
                   });
-                }
+                },
               );
-            }
+            },
           );
-        }
+        },
       );
     });
   });
@@ -762,13 +737,7 @@ const createBrand = (req, res) => {
 
   db.query(
     sql,
-    [
-      name,
-      slug,
-      body.description || null,
-      logo,
-      status,
-    ],
+    [name, slug, body.description || null, logo, status],
     (err, result) => {
       if (err) {
         return handleDatabaseError(err, res, "Failed to create brand");
@@ -781,7 +750,7 @@ const createBrand = (req, res) => {
         slug,
         logo,
       });
-    }
+    },
   );
 };
 
@@ -863,7 +832,7 @@ const updateBrand = (req, res) => {
         return handleDatabaseError(
           selectError,
           res,
-          "Failed to fetch brand before update"
+          "Failed to fetch brand before update",
         );
       }
 
@@ -887,13 +856,9 @@ const updateBrand = (req, res) => {
       const newValues = {
         name,
         slug,
-        description: hasDescription
-          ? description
-          : oldBrand.description,
+        description: hasDescription ? description : oldBrand.description,
         logo: logo || oldBrand.logo,
-        status: hasStatus
-          ? status
-          : oldBrand.status,
+        status: hasStatus ? status : oldBrand.status,
       };
 
       const updateSql = `
@@ -916,22 +881,13 @@ const updateBrand = (req, res) => {
 
       db.query(
         updateSql,
-        [
-          name,
-          slug,
-          hasDescription,
-          description,
-          logo,
-          hasStatus,
-          status,
-          id,
-        ],
+        [name, slug, hasDescription, description, logo, hasStatus, status, id],
         (updateError) => {
           if (updateError) {
             return handleDatabaseError(
               updateError,
               res,
-              "Failed to update brand"
+              "Failed to update brand",
             );
           }
 
@@ -962,10 +918,7 @@ const updateBrand = (req, res) => {
             ],
             (auditError) => {
               if (auditError) {
-                console.error(
-                  "Brand audit log error:",
-                  auditError
-                );
+                console.error("Brand audit log error:", auditError);
               }
 
               return res.status(200).json({
@@ -974,20 +927,348 @@ const updateBrand = (req, res) => {
                 slug,
                 ...(logo ? { logo } : {}),
               });
-            }
+            },
           );
-        }
+        },
       );
-    }
+    },
   );
 };
 
-const deleteBrand = (req, res) =>
-  deleteRecord("brands", "brand", req, res);
+const deleteBrand = (req, res) => deleteRecord("brands", "brand", req, res);
 
 // ========================================
 // EXPORT CONTROLLERS
 // ========================================
+
+// ========================================
+// GET CUSTOMER DETAILS
+// ========================================
+
+const getUserDetails = (req, res) => {
+  const { id } = req.params;
+
+  if (!isValidId(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "A valid customer ID is required",
+    });
+  }
+
+  const userSql = `
+    SELECT
+      id,
+      name,
+      email,
+      mobile,
+      profile_image,
+      date_of_birth,
+      status,
+      created_at,
+      updated_at
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+  `;
+
+  db.query(userSql, [id], (userError, users) => {
+    if (userError) {
+      return handleDatabaseError(
+        userError,
+        res,
+        "Failed to fetch customer details",
+      );
+    }
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const customer = users[0];
+
+    const addressesSql = `
+      SELECT
+        id,
+        type,
+        name,
+        phone,
+        address_line_1,
+        address_line_2,
+        city,
+        state,
+        country,
+        pincode,
+        is_default,
+        created_at,
+        updated_at
+      FROM addresses
+      WHERE user_id = ?
+      ORDER BY is_default DESC, id DESC
+    `;
+
+    db.query(addressesSql, [id], (addressError, addresses) => {
+      if (addressError) {
+        return handleDatabaseError(
+          addressError,
+          res,
+          "Failed to fetch customer addresses",
+        );
+      }
+
+      const ordersSql = `
+        SELECT
+          id,
+          order_number,
+          subtotal,
+          discount,
+          coupon_discount,
+          tax,
+          shipping_fee,
+          total_amount,
+          payment_status,
+          order_status,
+          created_at,
+          updated_at
+        FROM orders
+        WHERE user_id = ?
+        ORDER BY id DESC
+      `;
+
+      db.query(ordersSql, [id], (ordersError, orders) => {
+        if (ordersError) {
+          return handleDatabaseError(
+            ordersError,
+            res,
+            "Failed to fetch customer orders",
+          );
+        }
+
+        const ticketsSql = `
+          SELECT
+            id,
+            ticket_number,
+            category,
+            priority,
+            subject,
+            status,
+            created_at,
+            updated_at
+          FROM support_tickets
+          WHERE user_id = ?
+          ORDER BY id DESC
+        `;
+
+        db.query(ticketsSql, [id], (ticketsError, tickets) => {
+          if (ticketsError) {
+            return handleDatabaseError(
+              ticketsError,
+              res,
+              "Failed to fetch customer support tickets",
+            );
+          }
+
+          return res.status(200).json({
+            success: true,
+            data: {
+              customer,
+              addresses,
+              orders,
+              support_tickets: tickets,
+              summary: {
+                total_addresses: addresses.length,
+                total_orders: orders.length,
+                total_support_tickets: tickets.length,
+              },
+            },
+          });
+        });
+      });
+    });
+  });
+};
+
+// ========================================
+// DELETE CUSTOMER SAFELY
+// ========================================
+
+const deleteUser = (req, res) => {
+  const { id } = req.params;
+
+  if (!isValidId(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "A valid customer ID is required",
+    });
+  }
+
+  const adminId = req.user?.user_id ?? req.user?.id;
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid admin authentication",
+    });
+  }
+
+  // Preserve the generic audit middleware behavior.
+  // This API does not delete anything until checks finish.
+  const userSql = `
+    SELECT id, name, email, status
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+  `;
+
+  db.query(userSql, [id], (userError, users) => {
+    if (userError) {
+      return handleDatabaseError(userError, res, "Failed to fetch customer");
+    }
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const referenceTables = [
+      "addresses",
+      "activity_logs",
+      "carts",
+      "coupon_usages",
+      "credit_notes",
+      "inventory_movements",
+      "login_attempts",
+      "notifications",
+      "orders",
+      "order_returns",
+      "order_status_history",
+      "order_notes",
+      "otp_verifications",
+      "password_resets",
+      "payments",
+      "products",
+      "refund_status_history",
+      "recently_viewed",
+      "reviews",
+      "review_reports",
+      "shipment_events",
+      "stock_adjustments",
+      "support_tickets",
+      "user_roles",
+      "wishlists",
+    ];
+
+    const checkReferences = (index) => {
+      if (index >= referenceTables.length) {
+        // Avoid automatic deletion of accounts with related records.
+        // Even if these checks pass, another FK may still prevent deletion.
+        const auditSql = `
+          INSERT INTO admin_audit_logs
+            (
+              admin_id,
+              action,
+              entity_type,
+              entity_id,
+              old_values,
+              new_values,
+              ip_address
+            )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const auditValues = [
+          adminId,
+          "DELETE /api/admin/users/:id",
+          "users",
+          Number(id),
+          JSON.stringify({
+            name: users[0].name,
+            email: users[0].email,
+            status: users[0].status,
+          }),
+          JSON.stringify({
+            result: "blocked",
+            reason: "Customer deletion requires verified relationship checks",
+          }),
+          (req.ip || "").slice(0, 45) || null,
+        ];
+
+        db.query(auditSql, auditValues, (auditError) => {
+          if (auditError) {
+            console.error("Customer deletion audit error:", auditError);
+          }
+
+          return res.status(409).json({
+            success: false,
+            message:
+              "Permanent customer deletion is disabled to protect order history and related records. Set the customer status to inactive instead.",
+            customer_id: Number(id),
+            alternative: "PUT /api/admin/users/:id/status",
+          });
+        });
+
+        return;
+      }
+
+      const table = referenceTables[index];
+
+      // Table names come only from the fixed allowlist above.
+      const sql = `SELECT COUNT(*) AS total FROM \`${table}\` WHERE ${
+        table === "credit_notes" ||
+        table === "products" ||
+        table === "inventory_movements" ||
+        table === "order_notes" ||
+        table === "order_status_history" ||
+        table === "refund_status_history" ||
+        table === "shipment_events" ||
+        table === "stock_adjustments"
+          ? table === "order_status_history" ||
+            table === "refund_status_history"
+            ? "changed_by"
+            : table === "order_notes" ||
+                table === "credit_notes" ||
+                table === "inventory_movements" ||
+                table === "stock_adjustments"
+              ? "created_by"
+              : table === "products"
+                ? "created_by"
+                : "updated_by"
+          : "user_id"
+      } = ?`;
+
+      db.query(sql, [id], (checkError, rows) => {
+        if (checkError) {
+          return handleDatabaseError(
+            checkError,
+            res,
+            `Failed to check customer references in ${table}`,
+          );
+        }
+
+        // Stop deletion as soon as a related record exists.
+        if (rows[0].total > 0) {
+          return res.status(409).json({
+            success: false,
+            message:
+              "Customer cannot be deleted because related records exist. Set the customer status to inactive instead.",
+            customer_id: Number(id),
+            related_table: table,
+            related_records: Number(rows[0].total),
+            alternative: "PUT /api/admin/users/:id/status",
+          });
+        }
+
+        checkReferences(index + 1);
+      });
+    };
+
+    checkReferences(0);
+  });
+};
 
 module.exports = {
   getUsers,
@@ -1000,4 +1281,6 @@ module.exports = {
   createBrand,
   updateBrand,
   deleteBrand,
+    getUserDetails,
+  deleteUser,
 };
