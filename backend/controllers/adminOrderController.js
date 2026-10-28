@@ -1,5 +1,4 @@
 const db = require("../config/db");
-
 const { createNotification } = require("../services/notificationService");
 
 const isPositiveId = (value) => /^[1-9]\d*$/.test(String(value ?? ""));
@@ -43,6 +42,7 @@ const getAdminOrders = (req, res) => {
 
   if (search) {
     const term = `%${String(search).trim()}%`;
+
     sql += `
       AND (
         o.order_number LIKE ?
@@ -50,6 +50,7 @@ const getAdminOrders = (req, res) => {
         OR u.email LIKE ?
       )
     `;
+
     values.push(term, term, term);
   }
 
@@ -58,6 +59,7 @@ const getAdminOrders = (req, res) => {
   db.query(sql, values, (err, orders) => {
     if (err) {
       console.error("Get admin orders error:", err);
+
       return res.status(500).json({
         success: false,
         message: "Failed to fetch orders",
@@ -99,6 +101,7 @@ const getAdminOrderById = (req, res) => {
     (orderErr, orderRows) => {
       if (orderErr) {
         console.error("Get admin order error:", orderErr);
+
         return res.status(500).json({
           success: false,
           message: "Failed to fetch order details",
@@ -136,6 +139,7 @@ const getAdminOrderById = (req, res) => {
         (itemsErr, items) => {
           if (itemsErr) {
             console.error("Get admin order items error:", itemsErr);
+
             return res.status(500).json({
               success: false,
               message: "Failed to fetch order items",
@@ -144,7 +148,13 @@ const getAdminOrderById = (req, res) => {
 
           db.query(
             `
-              SELECT id, order_id, status, note, changed_by, created_at
+              SELECT
+                id,
+                order_id,
+                status,
+                note,
+                changed_by,
+                created_at
               FROM order_status_history
               WHERE order_id = ?
               ORDER BY created_at ASC, id ASC
@@ -153,6 +163,7 @@ const getAdminOrderById = (req, res) => {
             (historyErr, history) => {
               if (historyErr) {
                 console.error("Get admin order history error:", historyErr);
+
                 return res.status(500).json({
                   success: false,
                   message: "Failed to fetch order history",
@@ -175,287 +186,375 @@ const getAdminOrderById = (req, res) => {
   );
 };
 
-// Update order status
+// Update order status and synchronize shipment tracking
+const updateAdminOrderStatus = async (req, res) => {
+  let connection;
+  let transactionStarted = false;
 
-const updateAdminOrderStatus = (req, res) => {
-  const { order_id } = req.params;
-  const { status, note } = req.body || {};
+  try {
+    const { order_id } = req.params;
+    const { status, note } = req.body || {};
 
-  // This controller writes its audit record within the same transaction.
-  // Prevent the generic middleware from creating a duplicate entry.
-  req.skipGenericAudit = true;
+    req.skipGenericAudit = true;
 
-  const allowedStatuses = [
-    "confirmed",
-    "processing",
-    "packed",
-    "shipped",
-    "delivered",
-    "cancelled",
-  ];
+    const allowedStatuses = [
+      "confirmed",
+      "processing",
+      "packed",
+      "shipped",
+      "delivered",
+      "cancelled",
+    ];
 
-  if (!isPositiveId(order_id)) {
-    return res.status(400).json({
-      success: false,
-      message: "A valid order ID is required",
-    });
-  }
-
-  if (
-    typeof status !== "string" ||
-    !allowedStatuses.includes(status.trim().toLowerCase())
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid order status",
-      allowed_statuses: allowedStatuses,
-    });
-  }
-
-  const normalizedStatus = status.trim().toLowerCase();
-
-  const normalizedNote =
-    typeof note === "string" && note.trim()
-      ? note.trim()
-      : `Order status updated to ${normalizedStatus} by admin`;
-
-  if (normalizedNote.length > 2000) {
-    return res.status(400).json({
-      success: false,
-      message: "Note must not exceed 2000 characters",
-    });
-  }
-
-  const adminId = req.user?.user_id ?? req.user?.id ?? null;
-
-  if (!adminId) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid admin authentication",
-    });
-  }
-
-  db.getConnection((connectionErr, connection) => {
-    if (connectionErr) {
-      console.error("Admin order connection error:", connectionErr);
-
-      return res.status(500).json({
+    if (!isPositiveId(order_id)) {
+      return res.status(400).json({
         success: false,
-        message: "Database connection failed",
+        message: "A valid order ID is required",
       });
     }
 
-    connection.beginTransaction((transactionErr) => {
-      if (transactionErr) {
-        connection.release();
+    if (
+      typeof status !== "string" ||
+      !allowedStatuses.includes(status.trim().toLowerCase())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order status",
+        allowed_statuses: allowedStatuses,
+      });
+    }
 
-        console.error("Begin order transaction error:", transactionErr);
+    const normalizedStatus = status.trim().toLowerCase();
 
-        return res.status(500).json({
-          success: false,
-          message: "Failed to start order update",
-        });
+    const normalizedNote =
+      typeof note === "string" && note.trim()
+        ? note.trim()
+        : `Order status updated to ${normalizedStatus} by admin`;
+
+    if (normalizedNote.length > 2000) {
+      return res.status(400).json({
+        success: false,
+        message: "Note must not exceed 2000 characters",
+      });
+    }
+
+    const adminId = req.user?.user_id ?? req.user?.id;
+
+    if (!isPositiveId(adminId)) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin authentication",
+      });
+    }
+
+    const orderRank = {
+      pending: 0,
+      confirmed: 1,
+      processing: 2,
+      packed: 3,
+      shipped: 4,
+      delivered: 5,
+    };
+
+    const shipmentStatusForOrder = {
+      packed: "ready_to_ship",
+      shipped: "shipped",
+      delivered: "delivered",
+      cancelled: "cancelled",
+    };
+
+    const shipmentRank = {
+      pending: 0,
+      ready_to_ship: 1,
+      shipped: 2,
+      in_transit: 3,
+      out_for_delivery: 4,
+      delivered: 5,
+    };
+
+    connection = await db.promise().getConnection();
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    // 1. Lock the order row.
+    const [orders] = await connection.query(
+      `SELECT id, user_id, order_number, order_status
+       FROM orders
+       WHERE id = ?
+       FOR UPDATE`,
+      [Number(order_id)],
+    );
+
+    if (orders.length === 0) {
+      const error = new Error("Order not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const order = orders[0];
+    const currentOrderStatus = String(
+      order.order_status || "pending",
+    ).toLowerCase();
+
+    if (currentOrderStatus === normalizedStatus) {
+      const error = new Error(`Order is already ${normalizedStatus}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (
+      currentOrderStatus === "delivered" ||
+      currentOrderStatus === "cancelled"
+    ) {
+      const error = new Error(
+        `Cannot change status after order is ${currentOrderStatus}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (
+      normalizedStatus !== "cancelled" &&
+      orderRank[normalizedStatus] !== undefined &&
+      orderRank[currentOrderStatus] !== undefined &&
+      orderRank[normalizedStatus] < orderRank[currentOrderStatus]
+    ) {
+      const error = new Error(
+        `Cannot move order status backwards from ${currentOrderStatus} to ${normalizedStatus}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // 2. Lock the shipment row, if one exists.
+    const [shipments] = await connection.query(
+      `SELECT id, status, tracking_number
+       FROM shipments
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [Number(order_id)],
+    );
+
+    const shipment = shipments[0] || null;
+    const targetShipmentStatus =
+      shipmentStatusForOrder[normalizedStatus] || null;
+
+    // Shipping milestones require a shipment record.
+    if (
+      ["packed", "shipped", "delivered"].includes(normalizedStatus) &&
+      !shipment
+    ) {
+      const error = new Error(
+        "Create a shipment for this order before marking it packed, shipped, or delivered",
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
+    let currentShipmentStatus = null;
+
+    if (shipment) {
+      currentShipmentStatus = String(
+        shipment.status || "pending",
+      ).toLowerCase();
+
+      if (
+        ["delivered", "cancelled", "returned"].includes(
+          currentShipmentStatus,
+        ) &&
+        targetShipmentStatus &&
+        currentShipmentStatus !== targetShipmentStatus
+      ) {
+        const error = new Error(
+          `Cannot change shipment status after it is ${currentShipmentStatus}`,
+        );
+        error.statusCode = 400;
+        throw error;
       }
 
-      connection.query(
-        `SELECT id, user_id, order_number, order_status
-         FROM orders
-         WHERE id = ?
-         FOR UPDATE`,
-        [order_id],
-        (selectErr, rows) => {
-          if (selectErr) {
-            return connection.rollback(() => {
-              connection.release();
-              console.error("Select order status error:", selectErr);
+      if (
+        targetShipmentStatus &&
+        targetShipmentStatus !== currentShipmentStatus &&
+        targetShipmentStatus !== "cancelled" &&
+        shipmentRank[targetShipmentStatus] !== undefined &&
+        shipmentRank[currentShipmentStatus] !== undefined &&
+        shipmentRank[targetShipmentStatus] < shipmentRank[currentShipmentStatus]
+      ) {
+        const error = new Error(
+          `Cannot move shipment status backwards from ${currentShipmentStatus} to ${targetShipmentStatus}`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
 
-              return res.status(500).json({
-                success: false,
-                message: "Failed to check order status",
-              });
-            });
-          }
+      if (
+        normalizedStatus === "cancelled" &&
+        currentShipmentStatus === "delivered"
+      ) {
+        const error = new Error("A delivered shipment cannot be cancelled");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
-          if (!rows || rows.length === 0) {
-            return connection.rollback(() => {
-              connection.release();
+    // 3. Update the order.
+    await connection.query(
+      `UPDATE orders
+       SET order_status = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [normalizedStatus, Number(order_id)],
+    );
 
-              return res.status(404).json({
-                success: false,
-                message: "Order not found",
-              });
-            });
-          }
+    // 4. Insert order status history.
+    await connection.query(
+      `INSERT INTO order_status_history
+         (order_id, status, note, changed_by, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [Number(order_id), normalizedStatus, normalizedNote, Number(adminId)],
+    );
 
-          const currentStatus = String(
-            rows[0].order_status || "",
-          ).toLowerCase();
-
-          if (currentStatus === normalizedStatus) {
-            return connection.rollback(() => {
-              connection.release();
-
-              return res.status(400).json({
-                success: false,
-                message: `Order is already ${normalizedStatus}`,
-              });
-            });
-          }
-
-          if (["cancelled", "delivered"].includes(currentStatus)) {
-            return connection.rollback(() => {
-              connection.release();
-
-              return res.status(400).json({
-                success: false,
-                message: `Cannot change status after order is ${currentStatus}`,
-              });
-            });
-          }
-
-          connection.query(
-            "UPDATE orders SET order_status = ? WHERE id = ?",
-            [normalizedStatus, order_id],
-            (updateErr) => {
-              if (updateErr) {
-                return connection.rollback(() => {
-                  connection.release();
-                  console.error("Update order status error:", updateErr);
-
-                  return res.status(500).json({
-                    success: false,
-                    message: "Failed to update order status",
-                  });
-                });
-              }
-
-              connection.query(
-                `INSERT INTO order_status_history
-                  (order_id, status, note, changed_by, created_at)
-                 VALUES (?, ?, ?, ?, NOW())`,
-                [order_id, normalizedStatus, normalizedNote, adminId],
-                (historyErr) => {
-                  if (historyErr) {
-                    return connection.rollback(() => {
-                      connection.release();
-                      console.error("Insert order history error:", historyErr);
-
-                      return res.status(500).json({
-                        success: false,
-                        message: "Failed to save order status history",
-                      });
-                    });
-                  }
-
-                  // Audit log is part of the same transaction.
-                  const auditSql = `
-                    INSERT INTO admin_audit_logs
-                      (
-                        admin_id,
-                        action,
-                        entity_type,
-                        entity_id,
-                        old_values,
-                        new_values,
-                        ip_address
-                      )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                  `;
-
-                  const auditValues = [
-                    adminId,
-                    "PATCH /api/admin/orders/:order_id/status",
-                    "orders",
-                    Number(order_id),
-                    JSON.stringify({
-                      order_status: currentStatus,
-                    }),
-                    JSON.stringify({
-                      order_status: normalizedStatus,
-                      note: normalizedNote,
-                    }),
-                    (req.ip || "").slice(0, 45) || null,
-                  ];
-
-                  connection.query(auditSql, auditValues, (auditErr) => {
-                    if (auditErr) {
-                      return connection.rollback(() => {
-                        connection.release();
-                        console.error("Order audit log error:", auditErr);
-
-                        return res.status(500).json({
-                          success: false,
-                          message: "Failed to save order audit log",
-                        });
-                      });
-                    }
-
-                    connection.commit((commitErr) => {
-                      if (commitErr) {
-                        return connection.rollback(() => {
-                          connection.release();
-                          console.error(
-                            "Commit order status error:",
-                            commitErr,
-                          );
-
-                          return res.status(500).json({
-                            success: false,
-                            message: "Failed to save order update",
-                          });
-                        });
-                      }
-
-                      connection.release();
-
-                      const statusResponse = {
-                        success: true,
-                        message: "Order status updated successfully",
-                        data: {
-                          order_id: Number(order_id),
-                          previous_status: currentStatus,
-                          order_status: normalizedStatus,
-                          note: normalizedNote,
-                        },
-                      };
-
-                      // Notify the customer after the transaction commits.
-                      createNotification({
-                        userId: rows[0].user_id,
-                        type: "order_status_updated",
-                        title: "Order status updated",
-                        message: `Your order ${rows[0].order_number} is now ${normalizedStatus}.`,
-                        data: {
-                          order_id: Number(order_id),
-                          order_number: rows[0].order_number,
-                          previous_status: currentStatus,
-                          order_status: normalizedStatus,
-                        },
-                      })
-                        .then(() => {
-                          return res.status(200).json(statusResponse);
-                        })
-                        .catch((notificationError) => {
-                          console.error(
-                            "Admin order status notification error:",
-                            notificationError,
-                          );
-
-                          // The order is already committed successfully.
-                          return res.status(200).json(statusResponse);
-                        });
-                    });
-                  });
-                },
-              );
-            },
-          );
-        },
+    // 5. Synchronize shipment status and its timeline.
+    if (
+      shipment &&
+      targetShipmentStatus &&
+      currentShipmentStatus !== targetShipmentStatus
+    ) {
+      await connection.query(
+        `UPDATE shipments
+         SET status = ?,
+             shipped_at = CASE
+               WHEN ? IN (
+                 'shipped',
+                 'in_transit',
+                 'out_for_delivery',
+                 'delivered'
+               ) AND shipped_at IS NULL
+               THEN NOW()
+               ELSE shipped_at
+             END,
+             delivered_at = CASE
+               WHEN ? = 'delivered' AND delivered_at IS NULL
+               THEN NOW()
+               ELSE delivered_at
+             END
+         WHERE id = ?`,
+        [
+          targetShipmentStatus,
+          targetShipmentStatus,
+          targetShipmentStatus,
+          shipment.id,
+        ],
       );
-    });
-  });
-};
 
+      await connection.query(
+        `INSERT INTO shipment_tracking
+           (shipment_id, status, location, description)
+         VALUES (?, ?, NULL, ?)`,
+        [
+          shipment.id,
+          targetShipmentStatus,
+          `Shipment status updated to ${targetShipmentStatus.replace(
+            /_/g,
+            " ",
+          )} because order status changed to ${normalizedStatus}`,
+        ],
+      );
+    }
+
+    // 6. Insert audit log within the same transaction.
+    await connection.query(
+      `INSERT INTO admin_audit_logs
+         (
+           admin_id,
+           action,
+           entity_type,
+           entity_id,
+           old_values,
+           new_values,
+           ip_address
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        Number(adminId),
+        "PATCH /api/admin/orders/:order_id/status",
+        "orders",
+        Number(order_id),
+        JSON.stringify({
+          order_status: currentOrderStatus,
+          shipment_status: currentShipmentStatus,
+        }),
+        JSON.stringify({
+          order_status: normalizedStatus,
+          shipment_status: targetShipmentStatus || currentShipmentStatus,
+          note: normalizedNote,
+        }),
+        (req.ip || "").slice(0, 45) || null,
+      ],
+    );
+
+    // 7. Commit all database changes together.
+    await connection.commit();
+    transactionStarted = false;
+
+    connection.release();
+    connection = null;
+
+    const responseData = {
+      order_id: Number(order_id),
+      order_number: order.order_number,
+      previous_status: currentOrderStatus,
+      order_status: normalizedStatus,
+      shipment_id: shipment?.id ?? null,
+      previous_shipment_status: currentShipmentStatus,
+      shipment_status: targetShipmentStatus || currentShipmentStatus,
+      note: normalizedNote,
+    };
+
+    // 8. Notification failure must not undo a successful order update.
+    try {
+      await createNotification({
+        userId: order.user_id,
+        type: "order_status_updated",
+        title: "Order status updated",
+        message: `Your order ${order.order_number} is now ${normalizedStatus}.`,
+        data: responseData,
+      });
+    } catch (notificationError) {
+      console.error(
+        "Admin order status notification error:",
+        notificationError,
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Order status updated successfully",
+      data: responseData,
+    });
+  } catch (error) {
+    if (connection && transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("Order status rollback error:", rollbackError);
+      }
+    }
+
+    console.error("Update admin order status error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to update order status",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
 module.exports = {
   getAdminOrders,
   getAdminOrderById,
