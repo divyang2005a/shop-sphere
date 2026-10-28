@@ -60,6 +60,8 @@ const productRoutes = require("./routes/productRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const shipmentRoutes = require("./routes/shipmentRoutes");
+const paymentMethodRoutes = require("./routes/paymentMethodRoutes");
+const shippingRoutes = require("./routes/shippingRoutes");
 
 app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
@@ -71,6 +73,8 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/shipments", shipmentRoutes);
+app.use("/api/payment-methods", paymentMethodRoutes);
+app.use("/api/shipping", shippingRoutes);
 
 app.use("/api/support", require("./routes/supportRoutes"));
 

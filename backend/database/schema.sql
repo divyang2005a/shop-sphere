@@ -215,6 +215,7 @@ CREATE TABLE `coupons` (
   `start_date` datetime NOT NULL,
   `end_date` datetime NOT NULL,
   `usage_limit` int(11) DEFAULT NULL,
+  `user_limit` int(11) DEFAULT NULL,
   `per_user_limit` int(11) DEFAULT NULL,
   `first_order_only` tinyint(1) DEFAULT 0,
   `status` varchar(50) DEFAULT 'active',
@@ -502,6 +503,28 @@ CREATE TABLE `order_status_history` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `payment_methods`
+--
+
+DROP TABLE IF EXISTS `payment_methods`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `payment_methods` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'active',
+  `sort_order` int(11) NOT NULL DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_payment_methods_code` (`code`),
+  KEY `idx_payment_methods_status_order` (`status`,`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `orders`
 --
 
@@ -515,12 +538,14 @@ CREATE TABLE `orders` (
   `billing_address_id` bigint(20) unsigned NOT NULL,
   `shipping_address_id` bigint(20) unsigned NOT NULL,
   `shipping_method_id` bigint(20) unsigned DEFAULT NULL,
+  `shipping_zone_id` bigint(20) unsigned DEFAULT NULL,
   `subtotal` decimal(12,2) NOT NULL,
   `discount` decimal(12,2) DEFAULT 0.00,
   `coupon_discount` decimal(12,2) DEFAULT 0.00,
   `tax` decimal(12,2) DEFAULT 0.00,
   `shipping_fee` decimal(12,2) DEFAULT 0.00,
   `total_amount` decimal(12,2) NOT NULL,
+  `payment_method` varchar(100) DEFAULT NULL,
   `payment_status` varchar(50) DEFAULT 'pending',
   `order_status` varchar(50) DEFAULT 'pending',
   `coupon_id` bigint(20) unsigned DEFAULT NULL,

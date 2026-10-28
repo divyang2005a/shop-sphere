@@ -78,6 +78,18 @@ If the database account has a password, use the appropriate secure authenticatio
 
 **Important:** Keep the schema and seed SQL files with the project so that another developer can recreate the database. Confirm that required tables and initial data are present before testing APIs.
 
+For an existing database, apply the coupon user-limit migration once before
+starting the updated backend:
+
+```bash
+/opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261027_add_coupon_user_limit.sql
+```
+
+Coupon creation accepts an optional `user_limit` integer. It limits the number
+of distinct users who can redeem that coupon; once reached, the coupon is
+automatically marked inactive. The admin coupon list returns `user_count` and
+`user_limit`.
+
 ## 6. Environment Configuration
 
 Create your local `.env` file from the example:
@@ -154,11 +166,73 @@ The backend mounts the following API route groups:
 | `/api/cart` | Shopping cart operations |
 | `/api/addresses` | Customer address management |
 | `/api/orders` | Checkout, order creation, order history, cancellation, tracking, returns and invoice access |
+| `/api/payment-methods` | Active payment methods available at checkout |
 | `/api/wishlist` | Wishlist operations |
 | `/api/reviews` | Product reviews |
 | `/api/notifications` | Customer notifications |
 | `/api/shipments` | Shipment records and tracking |
+| `/api/shipping` | Active shipping methods and delivery areas |
 | `/api/support` | Customer support tickets and messages |
+
+Payment methods are configurable without a payment gateway. Apply the migration
+once to an existing database:
+
+```bash
+/opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261027_add_payment_methods.sql
+```
+
+Admins can manage methods with `GET` and `POST /api/admin/payment-methods`
+and `PATCH /api/admin/payment-methods/:id`. Customers can fetch active methods
+from `GET /api/payment-methods`; the checkout summary also includes
+`available_payment_methods`. Pass the selected `payment_method_id` when
+creating an order to save the method name on that order. Orders remain pending;
+this feature does not process or confirm payments.
+
+Admins can manage shipping methods and delivery areas through
+`/api/admin/shipping-methods` and `/api/admin/delivery-areas`. Public
+authenticated endpoints are `GET /api/shipping/methods` and
+`GET /api/shipping/delivery-areas`. Delivery areas contain a list of pincodes,
+a shipping fee, and an optional free-shipping threshold. For existing
+databases, apply `database/migrations/20261027_add_shipping_zone_to_orders.sql`
+once. Checkout accepts only addresses in an active delivery area when a
+shipping method is selected.
+
+Create a shipping method with `POST /api/admin/shipping-methods`:
+
+```json
+{
+  "name": "Standard Delivery",
+  "description": "Standard shipping",
+  "price": 50,
+  "estimated_days": "3-5 days"
+}
+```
+
+Create a delivery area with `POST /api/admin/delivery-areas`:
+
+```json
+{
+  "name": "Central region",
+  "pincodes": ["110001", "110002"],
+  "shipping_fee": 50,
+  "free_shipping_threshold": 1000
+}
+```
+
+Use the admin bearer token for admin endpoints. Active areas cannot share
+pincodes; deactivate an area with `PATCH /api/admin/delivery-areas/:id` and
+`{"status":"inactive"}`.
+
+Example admin request to add a method:
+
+```json
+{
+  "code": "cod",
+  "name": "Cash on Delivery",
+  "description": "Pay when the order is delivered",
+  "sort_order": 1
+}
+```
 
 The root endpoint can be checked with:
 

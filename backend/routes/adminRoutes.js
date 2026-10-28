@@ -8,12 +8,12 @@ router.use(adminAuditMiddleware);
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
 
-// Separate upload middlewares
+// Upload middlewares
 const uploadProductImage = require("../middleware/uploadMiddleware");
 const uploadCategory = require("../middleware/categoryUpload");
 const uploadBrand = require("../middleware/brandUpload");
 
-// Admin controllers
+// Admin catalog controllers
 const {
   getUsers,
   updateUserStatus,
@@ -45,32 +45,32 @@ const {
   getGstRates,
 } = require("../controllers/adminProductController");
 
+// Returns
 const {
   getReturnRequests,
   updateReturnStatus,
 } = require("../controllers/adminController");
 
-// Inventory controllers
+// Inventory
 const {
   getInventoryMovements,
   createInventoryMovement,
   updateInventory,
 } = require("../controllers/inventoryController");
 
-// admin order controle
-
+// Admin order management
 const {
   getAdminOrders,
   getAdminOrderById,
   updateAdminOrderStatus,
 } = require("../controllers/adminOrderController");
 
+// Invoices and packing slips
 const { getAdminOrderInvoice } = require("../controllers/invoiceController");
-
 const { getAdminInvoicePdf } = require("../controllers/invoicePdfController");
-
 const { getPackingSlipPdf } = require("../controllers/packingSlipController");
 
+// Credit notes
 const {
   createCreditNote,
   getCreditNotes,
@@ -80,33 +80,69 @@ const {
   getAdminCreditNotePdf,
 } = require("../controllers/creditNotePdfController");
 
+// Refunds
 const {
   createRefund,
   getAdminRefunds,
   updateRefundStatus,
 } = require("../controllers/refundController");
 
+// Coupons
 const {
   createCoupon,
   getCoupons,
   updateCouponStatus,
 } = require("../controllers/couponController");
 
-// Dashboard
-router.get("/dashboard", authMiddleware, adminMiddleware, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Admin dashboard API is running",
-  });
-});
+// Payment method configuration only; no gateway integration
+const {
+  createPaymentMethod,
+  getAdminPaymentMethods,
+  updatePaymentMethod,
+} = require("../controllers/paymentMethodController");
 
-// Users
+// Shipping and delivery areas
+const {
+  createDeliveryArea,
+  createShippingMethod,
+  getDeliveryAreas,
+  getShippingMethods,
+  updateDeliveryArea,
+  updateShippingMethod,
+} = require("../controllers/shippingController");
+
+// Dashboard and reports
+const {
+  getDashboard,
+  getSalesReport,
+  getOrdersReport,
+  getProductsReport,
+  getInventoryReport,
+} = require("../controllers/reportController");
+
+// =====================================================
+// DASHBOARD
+// =====================================================
+
+router.get(
+  "/dashboard",
+  authMiddleware,
+  adminMiddleware,
+  getDashboard,
+);
+
+// =====================================================
+// USERS
+// =====================================================
+
 router.get("/users", authMiddleware, adminMiddleware, getUsers);
 
-// Users
-router.get("/users", authMiddleware, adminMiddleware, getUsers);
-
-router.get("/users/:id", authMiddleware, adminMiddleware, getUserDetails);
+router.get(
+  "/users/:id",
+  authMiddleware,
+  adminMiddleware,
+  getUserDetails,
+);
 
 router.put(
   "/users/:id/status",
@@ -115,16 +151,17 @@ router.put(
   updateUserStatus,
 );
 
-router.delete("/users/:id", authMiddleware, adminMiddleware, deleteUser);
-
-router.put(
-  "/users/:id/status",
+router.delete(
+  "/users/:id",
   authMiddleware,
   adminMiddleware,
-  updateUserStatus,
+  deleteUser,
 );
 
-// Products
+// =====================================================
+// PRODUCTS
+// =====================================================
+
 router.get("/products", authMiddleware, adminMiddleware, getProducts);
 
 router.post("/products", authMiddleware, adminMiddleware, createProduct);
@@ -143,7 +180,10 @@ router.delete(
   deleteProduct,
 );
 
-// Product images
+// =====================================================
+// PRODUCT IMAGES
+// =====================================================
+
 router.get(
   "/products/:product_id/images",
   authMiddleware,
@@ -166,7 +206,10 @@ router.delete(
   deleteProductImage,
 );
 
-// Product variants
+// =====================================================
+// PRODUCT VARIANTS
+// =====================================================
+
 router.get(
   "/products/:product_id/variants",
   authMiddleware,
@@ -195,7 +238,16 @@ router.delete(
   deleteProductVariant,
 );
 
-router.get("/returns", authMiddleware, adminMiddleware, getReturnRequests);
+// =====================================================
+// RETURNS
+// =====================================================
+
+router.get(
+  "/returns",
+  authMiddleware,
+  adminMiddleware,
+  getReturnRequests,
+);
 
 router.put(
   "/returns/:return_id",
@@ -204,8 +256,16 @@ router.put(
   updateReturnStatus,
 );
 
-// Categories — categoryUpload.js only
-router.get("/categories", authMiddleware, adminMiddleware, getCategories);
+// =====================================================
+// CATEGORIES
+// =====================================================
+
+router.get(
+  "/categories",
+  authMiddleware,
+  adminMiddleware,
+  getCategories,
+);
 
 router.post(
   "/categories",
@@ -230,7 +290,10 @@ router.delete(
   deleteCategory,
 );
 
-// Brands — brandUpload.js only
+// =====================================================
+// BRANDS
+// =====================================================
+
 router.get("/brands", authMiddleware, adminMiddleware, getBrands);
 
 router.post(
@@ -255,11 +318,21 @@ router.put(
   updateBrand,
 );
 
-router.delete("/brands/:id", authMiddleware, adminMiddleware, deleteBrand);
+router.delete(
+  "/brands/:id",
+  authMiddleware,
+  adminMiddleware,
+  deleteBrand,
+);
 
-// Coupons
+// =====================================================
+// COUPONS
+// =====================================================
+
 router.get("/coupons", authMiddleware, adminMiddleware, getCoupons);
+
 router.post("/coupons", authMiddleware, adminMiddleware, createCoupon);
+
 router.patch(
   "/coupons/:id/status",
   authMiddleware,
@@ -267,7 +340,82 @@ router.patch(
   updateCouponStatus,
 );
 
-// Inventory movements
+// =====================================================
+// PAYMENT METHODS
+// Configuration only; no payment gateway integration
+// =====================================================
+
+router.get(
+  "/payment-methods",
+  authMiddleware,
+  adminMiddleware,
+  getAdminPaymentMethods,
+);
+
+router.post(
+  "/payment-methods",
+  authMiddleware,
+  adminMiddleware,
+  createPaymentMethod,
+);
+
+router.patch(
+  "/payment-methods/:id",
+  authMiddleware,
+  adminMiddleware,
+  updatePaymentMethod,
+);
+
+// =====================================================
+// SHIPPING METHODS AND DELIVERY AREAS
+// =====================================================
+
+router.get(
+  "/shipping-methods",
+  authMiddleware,
+  adminMiddleware,
+  getShippingMethods,
+);
+
+router.post(
+  "/shipping-methods",
+  authMiddleware,
+  adminMiddleware,
+  createShippingMethod,
+);
+
+router.patch(
+  "/shipping-methods/:id",
+  authMiddleware,
+  adminMiddleware,
+  updateShippingMethod,
+);
+
+router.get(
+  "/delivery-areas",
+  authMiddleware,
+  adminMiddleware,
+  getDeliveryAreas,
+);
+
+router.post(
+  "/delivery-areas",
+  authMiddleware,
+  adminMiddleware,
+  createDeliveryArea,
+);
+
+router.patch(
+  "/delivery-areas/:id",
+  authMiddleware,
+  adminMiddleware,
+  updateDeliveryArea,
+);
+
+// =====================================================
+// INVENTORY
+// =====================================================
+
 router.get(
   "/inventory/movements",
   authMiddleware,
@@ -289,11 +437,27 @@ router.put(
   updateInventory,
 );
 
-// GST rates
-router.get("/gst-rates", authMiddleware, adminMiddleware, getGstRates);
+// =====================================================
+// GST RATES
+// =====================================================
 
-// Admin Order Management
-router.get("/orders", authMiddleware, adminMiddleware, getAdminOrders);
+router.get(
+  "/gst-rates",
+  authMiddleware,
+  adminMiddleware,
+  getGstRates,
+);
+
+// =====================================================
+// ADMIN ORDER MANAGEMENT
+// =====================================================
+
+router.get(
+  "/orders",
+  authMiddleware,
+  adminMiddleware,
+  getAdminOrders,
+);
 
 router.get(
   "/orders/:order_id",
@@ -330,7 +494,10 @@ router.get(
   getPackingSlipPdf,
 );
 
-// Credit notes — admin only
+// =====================================================
+// CREDIT NOTES
+// =====================================================
+
 router.post(
   "/returns/:return_id/credit-note",
   authMiddleware,
@@ -338,7 +505,12 @@ router.post(
   createCreditNote,
 );
 
-router.get("/credit-notes", authMiddleware, adminMiddleware, getCreditNotes);
+router.get(
+  "/credit-notes",
+  authMiddleware,
+  adminMiddleware,
+  getCreditNotes,
+);
 
 router.get(
   "/credit-notes/:creditNoteId/pdf",
@@ -347,7 +519,10 @@ router.get(
   getAdminCreditNotePdf,
 );
 
-// Refund management — admin only
+// =====================================================
+// REFUND MANAGEMENT
+// =====================================================
+
 router.post(
   "/returns/:return_id/refund",
   authMiddleware,
@@ -355,13 +530,54 @@ router.post(
   createRefund,
 );
 
-router.get("/refunds", authMiddleware, adminMiddleware, getAdminRefunds);
+router.get(
+  "/refunds",
+  authMiddleware,
+  adminMiddleware,
+  getAdminRefunds,
+);
 
 router.patch(
   "/refunds/:refund_id/status",
   authMiddleware,
   adminMiddleware,
   updateRefundStatus,
+);
+
+// =====================================================
+// REPORTS
+// =====================================================
+
+// Sales report
+router.get(
+  "/reports/sales",
+  authMiddleware,
+  adminMiddleware,
+  getSalesReport,
+);
+
+// Orders report
+router.get(
+  "/reports/orders",
+  authMiddleware,
+  adminMiddleware,
+  getOrdersReport,
+);
+
+// Products report
+router.get(
+  "/reports/products",
+  authMiddleware,
+  adminMiddleware,
+  getProductsReport,
+);
+
+// Inventory report
+router.get(
+  "/reports/inventory",
+  authMiddleware,
+  adminMiddleware,
+  getInventoryReport,
 );
 
 module.exports = router;

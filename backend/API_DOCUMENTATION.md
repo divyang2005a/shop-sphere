@@ -126,6 +126,11 @@ All listed endpoints require authentication.
 
 Keep static routes such as `/checkout-summary` and `/refunds` before the `/:orderId` route in the router.
 
+When an order is successfully placed, the backend creates one pending shipment
+and its initial tracking-history event in the same database transaction. The
+order response includes `shipment_id` and `shipment_status`. Admins can add
+courier/tracking details and update its status through the shipment APIs.
+
 Payment gateway integration is outside the current project scope. Refund endpoints must be tested only with legitimate existing records and applicable business rules.
 
 ## 10. Product Reviews
@@ -159,12 +164,67 @@ Prefix: `/api/shipments`
 
 | Method | Endpoint | Purpose |
 |---|---|---|
+| GET | `/admin` | List all shipments with order, customer, address, shipping-method and tracking-history details; authentication and admin authorization required |
+| GET | `/admin/:shipmentId` | Get a shipment with complete order and tracking-history details; authentication and admin authorization required |
 | POST | `/admin/orders/:orderId` | Create a shipment; authentication and admin authorization required |
 | PATCH | `/admin/:shipmentId/status` | Update shipment status; authentication and admin authorization required |
 | GET | `/orders/:orderId` | Get order shipments; authentication required |
 | GET | `/tracking/:trackingNumber` | Get a shipment by tracking number; authentication required |
 
 Shipment tracking uses the application's shipment functionality. A live third-party courier integration should not be assumed.
+
+## Shipping Methods and Delivery Areas
+
+Public authenticated endpoints:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/shipping/methods` | List active shipping methods |
+| GET | `/api/shipping/delivery-areas` | List active delivery areas; optional `?pincode=...` filters the list |
+
+Admin-only endpoints under `/api/admin`:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/shipping-methods` | List shipping methods |
+| POST | `/shipping-methods` | Create a shipping method |
+| PATCH | `/shipping-methods/:id` | Update a shipping method or deactivate it |
+| GET | `/delivery-areas` | List delivery areas |
+| POST | `/delivery-areas` | Create a delivery area with pincodes and fee rules |
+| PATCH | `/delivery-areas/:id` | Update a delivery area or deactivate it |
+
+Checkout requires the selected shipping address pincode to match one active
+delivery area. The area's shipping fee applies, with free shipping at or above
+its optional threshold. For existing databases, apply
+`database/migrations/20261027_add_shipping_zone_to_orders.sql` once.
+
+Shipping method requests accept both database fields (`description`, `price`,
+`estimated_days`) and frontend aliases (`type`, `charge`, `deliveryTime`).
+Delivery-area requests accept `pincodes` or `pincode`, and `shipping_fee` or
+`charge`. Since `shipping_zones` has no city, state, or estimated-days columns,
+the frontend should combine city and state into `name`; estimated delivery
+belongs to the selected shipping method. Responses retain database fields and
+include frontend aliases where applicable.
+
+Admin create examples:
+
+```json
+{
+  "name": "Standard Delivery",
+  "description": "Standard shipping",
+  "price": 50,
+  "estimated_days": "3-5 days"
+}
+```
+
+```json
+{
+  "name": "Central region",
+  "pincodes": ["110001", "110002"],
+  "shipping_fee": 50,
+  "free_shipping_threshold": 1000
+}
+```
 
 ## 13. Customer Support
 
@@ -332,4 +392,8 @@ The current project should include reproducible SQL schema and seed files. If th
 ## 19. Scope
 
 Payment gateway integration is excluded from the current project scope. Do not represent a pending or unpaid order as a successful payment. Do not create fake payment records to test refunds.
+
+Payment method options may be stored and selected for an order without processing
+a payment. The selected method is saved with the order, while its payment status
+remains pending until an actual payment is recorded.
 EOF

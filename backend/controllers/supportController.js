@@ -627,6 +627,7 @@ const getAdminTicketDetails = async (req, res) => {
 };
 
 // ADMIN: Reply to a ticket.
+// ADMIN: Reply to a ticket with audit logging.
 const replyToTicket = async (req, res) => {
   let connection;
   let transactionStarted = false;
@@ -643,6 +644,13 @@ const replyToTicket = async (req, res) => {
       });
     }
 
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin authentication",
+      });
+    }
+
     if (
       typeof message !== "string" ||
       !message.trim() ||
@@ -654,10 +662,15 @@ const replyToTicket = async (req, res) => {
       });
     }
 
+    // Prevent duplicate generic audit records.
+    req.skipGenericAudit = true;
+
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
+    // Lock the ticket so its status cannot be changed concurrently.
     const [tickets] = await connection.query(
       `SELECT id, user_id, ticket_number, status
        FROM support_tickets
@@ -672,13 +685,18 @@ const replyToTicket = async (req, res) => {
 
     const ticket = tickets[0];
 
-    if (String(ticket.status).toLowerCase() === "closed") {
+    const previousStatus = String(ticket.status || "open").toLowerCase();
+
+    if (previousStatus === "closed") {
       throw makeError(
         400,
         "This ticket is closed and cannot receive new messages",
       );
     }
 
+    const newStatus = "waiting_for_customer";
+
+    // Save the admin's reply.
     const [result] = await connection.query(
       `INSERT INTO support_messages (
          ticket_id,
@@ -690,16 +708,52 @@ const replyToTicket = async (req, res) => {
       [ticketId, adminId, message.trim()],
     );
 
+    const messageId = result.insertId;
+
+    // Update ticket status.
     await connection.query(
       `UPDATE support_tickets
-       SET status = 'waiting_for_customer'
+       SET status = ?
        WHERE id = ?`,
-      [ticketId],
+      [newStatus, ticketId],
     );
 
+    // Audit log: do not store the full message text.
+    // The message, status change, and audit record share one transaction.
+    await connection.query(
+      `INSERT INTO admin_audit_logs (
+         admin_id,
+         action,
+         entity_type,
+         entity_id,
+         old_values,
+         new_values,
+         ip_address
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        adminId,
+        "POST /api/support/admin/tickets/:ticketId/messages",
+        "support_messages",
+        messageId,
+        JSON.stringify({
+          ticket_id: ticketId,
+          status: previousStatus,
+        }),
+        JSON.stringify({
+          ticket_id: ticketId,
+          message_id: messageId,
+          status: newStatus,
+        }),
+        (req.ip || "").slice(0, 45) || null,
+      ],
+    );
+
+    // Commit all database changes together.
     await connection.commit();
     transactionStarted = false;
 
+    // Notify the customer after the transaction commits.
     try {
       await createNotification({
         userId: ticket.user_id,
@@ -709,7 +763,7 @@ const replyToTicket = async (req, res) => {
         data: {
           ticket_id: ticketId,
           ticket_number: ticket.ticket_number,
-          message_id: result.insertId,
+          message_id: messageId,
         },
       });
     } catch (notificationError) {
@@ -721,8 +775,8 @@ const replyToTicket = async (req, res) => {
       message: "Reply sent successfully",
       data: {
         ticket_id: ticketId,
-        message_id: result.insertId,
-        status: "waiting_for_customer",
+        message_id: messageId,
+        status: newStatus,
       },
     });
   } catch (error) {
@@ -746,7 +800,6 @@ const replyToTicket = async (req, res) => {
     }
   }
 };
-
 // ADMIN: Update ticket status.
 // ADMIN: Update ticket status with audit logging.
 const updateTicketStatus = async (req, res) => {

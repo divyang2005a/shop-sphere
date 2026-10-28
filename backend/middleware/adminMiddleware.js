@@ -10,13 +10,21 @@ const adminMiddleware = (req, res, next) => {
 
   db.query(sql, [userId], (err, result) => {
     if (err) {
-      console.error(err);
+      console.error("Admin authorization lookup failed:", err);
 
       return res.status(500).json({
         success: false,
-        message: "admin access required",
+        message: "Failed to verify admin access",
       });
     }
+
+    if (result.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required",
+      });
+    }
+
     next();
   });
 };

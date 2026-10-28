@@ -21,12 +21,16 @@ const getAdminOrders = (req, res) => {
       o.tax,
       o.shipping_fee,
       o.total_amount,
+      o.shipping_zone_id,
+      sz.name AS delivery_area_name,
+      o.payment_method,
       o.payment_status,
       o.order_status,
       o.created_at,
       o.updated_at
     FROM orders o
     LEFT JOIN users u ON u.id = o.user_id
+    LEFT JOIN shipping_zones sz ON sz.id = o.shipping_zone_id
     WHERE 1 = 1
   `;
 

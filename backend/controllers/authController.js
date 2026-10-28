@@ -6,8 +6,8 @@ const { sendEmail } = require("../services/emailService");
 // ========================================
 // REGISTER
 // ========================================
-const register = (req, res) => {
-  const { name, email, mobile, password, date_of_birth } = req.body;
+const register = async (req, res) => {
+  const { name, email, mobile, password, date_of_birth } = req.body || {};
 
   if (!name || !password || (!email && !mobile)) {
     return res.status(400).json({
@@ -16,25 +16,28 @@ const register = (req, res) => {
     });
   }
 
-  const checkSql = `
-    SELECT id, email, mobile
-    FROM users
-    WHERE email = ? OR mobile = ?
-    LIMIT 1
-  `;
+  let connection;
+  let transactionStarted = false;
 
-  db.query(checkSql, [email || null, mobile || null], (err, results) => {
-    if (err) {
-      console.error(err);
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    connection = await db.promise().getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
 
-      return res.status(500).json({
-        success: false,
-        message: "Registration check failed",
-      });
-    }
+    const [existingUsers] = await connection.query(
+      `SELECT id, email, mobile
+       FROM users
+       WHERE email = ? OR mobile = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [email || null, mobile || null],
+    );
 
-    if (results.length > 0) {
-      const existingUser = results[0];
+    if (existingUsers.length > 0) {
+      const existingUser = existingUsers[0];
+      await connection.rollback();
+      transactionStarted = false;
 
       if (mobile && existingUser.mobile === mobile) {
         return res.status(409).json({
@@ -51,67 +54,61 @@ const register = (req, res) => {
       }
     }
 
-    bcrypt.hash(password, 10, (hashErr, hashedPassword) => {
-      if (hashErr) {
-        console.error(hashErr);
+    const [result] = await connection.query(
+      `INSERT INTO users
+         (name, email, mobile, password, date_of_birth)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        name,
+        email || null,
+        mobile || null,
+        hashedPassword,
+        date_of_birth || null,
+      ],
+    );
 
-        return res.status(500).json({
-          success: false,
-          message: "Password hashing failed",
-        });
-      }
+    // Role ID 2 = user
+    await connection.query(
+      "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+      [result.insertId, 2],
+    );
 
-      const sql = `
-        INSERT INTO users
-          (name, email, mobile, password, date_of_birth)
-        VALUES (?, ?, ?, ?, ?)
-      `;
+    await connection.commit();
+    transactionStarted = false;
 
-      db.query(
-        sql,
-        [
-          name,
-          email || null,
-          mobile || null,
-          hashedPassword,
-          date_of_birth || null,
-        ],
-        (insertErr, result) => {
-          if (insertErr) {
-            console.error(insertErr);
-
-            return res.status(500).json({
-              success: false,
-              message: "Registration failed",
-            });
-          }
-
-          // Role ID 2 = user
-          db.query(
-            "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
-            [result.insertId, 2],
-            (roleErr) => {
-              if (roleErr) {
-                console.error("Role assignment failed:", roleErr);
-
-                return res.status(500).json({
-                  success: false,
-                  message: "User registered, but role assignment failed",
-                });
-              }
-
-              return res.status(201).json({
-                success: true,
-                message: "User registered successfully",
-                user_id: result.insertId,
-                role: "user",
-              });
-            },
-          );
-        },
-      );
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user_id: result.insertId,
+      role: "user",
     });
-  });
+  } catch (error) {
+    if (connection && transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("Registration rollback error:", rollbackError);
+      }
+    }
+
+    console.error("Registration failed:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+        message: "Email or mobile number already registered",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Registration failed",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
 };
 
 // ========================================

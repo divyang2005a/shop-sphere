@@ -8,6 +8,132 @@ const isPositiveId = (value) => {
 
 const getUserId = (req) => req.user?.user_id ?? req.user?.id;
 
+const getAdminShipments = async (req, res) => {
+  try {
+    const shipmentId = req.params.shipmentId;
+
+    if (shipmentId !== undefined && !isPositiveId(shipmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid shipment ID is required",
+      });
+    }
+
+    const values = [];
+    let shipmentFilter = "";
+
+    if (shipmentId !== undefined) {
+      shipmentFilter = "WHERE s.id = ?";
+      values.push(Number(shipmentId));
+    }
+
+    const [shipments] = await db.promise().query(
+      `SELECT
+         s.*,
+         o.order_number,
+         o.user_id,
+         o.order_status,
+         o.payment_status,
+         o.subtotal,
+         o.discount,
+         o.coupon_discount,
+         o.tax,
+         o.shipping_fee,
+         o.total_amount,
+         o.created_at AS order_created_at,
+         u.name AS customer_name,
+         u.email AS customer_email,
+         u.mobile AS customer_mobile,
+         sm.name AS shipping_method_name,
+         sm.description AS shipping_method_description,
+         sm.price AS shipping_method_price,
+         sm.estimated_days AS shipping_method_estimated_days,
+         billing.name AS billing_name,
+         billing.phone AS billing_phone,
+         billing.address_line_1 AS billing_address_line_1,
+         billing.address_line_2 AS billing_address_line_2,
+         billing.city AS billing_city,
+         billing.state AS billing_state,
+         billing.country AS billing_country,
+         billing.pincode AS billing_pincode,
+         shipping.name AS shipping_name,
+         shipping.phone AS shipping_phone,
+         shipping.address_line_1 AS shipping_address_line_1,
+         shipping.address_line_2 AS shipping_address_line_2,
+         shipping.city AS shipping_city,
+         shipping.state AS shipping_state,
+         shipping.country AS shipping_country,
+         shipping.pincode AS shipping_pincode
+       FROM shipments s
+       JOIN orders o ON o.id = s.order_id
+       LEFT JOIN users u ON u.id = o.user_id
+       LEFT JOIN shipping_methods sm ON sm.id = s.shipping_method_id
+       LEFT JOIN addresses billing ON billing.id = o.billing_address_id
+       LEFT JOIN addresses shipping ON shipping.id = o.shipping_address_id
+       ${shipmentFilter}
+       ORDER BY s.id DESC`,
+      values,
+    );
+
+    if (shipmentId !== undefined && shipments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    if (shipments.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        shipments: [],
+      });
+    }
+
+    const shipmentIds = shipments.map((shipment) => shipment.id);
+    const [trackingHistory] = await db.promise().query(
+      `SELECT id, shipment_id, status, location, description, tracked_at
+       FROM shipment_tracking
+       WHERE shipment_id IN (?)
+       ORDER BY tracked_at ASC, id ASC`,
+      [shipmentIds],
+    );
+
+    const historiesByShipment = new Map();
+    for (const event of trackingHistory) {
+      const key = String(event.shipment_id);
+      const history = historiesByShipment.get(key) || [];
+      history.push(event);
+      historiesByShipment.set(key, history);
+    }
+
+    const shipmentsWithHistory = shipments.map((shipment) => ({
+      ...shipment,
+      tracking_history: historiesByShipment.get(String(shipment.id)) || [],
+    }));
+
+    if (shipmentId !== undefined) {
+      return res.status(200).json({
+        success: true,
+        shipment: shipmentsWithHistory[0],
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: shipmentsWithHistory.length,
+      shipments: shipmentsWithHistory,
+    });
+  } catch (error) {
+    console.error("Get admin shipments error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch shipments",
+    });
+  }
+};
+
 // Admin: Create shipment for an order
 const createShipment = async (req, res) => {
   let connection;
@@ -121,6 +247,23 @@ const createShipment = async (req, res) => {
         "This order has no shipping method assigned"
       );
       error.statusCode = 400;
+      throw error;
+    }
+
+    const [existingShipments] = await connection.query(
+      `SELECT id
+       FROM shipments
+       WHERE order_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId]
+    );
+
+    if (existingShipments.length > 0) {
+      const error = new Error(
+        "A shipment already exists for this order"
+      );
+      error.statusCode = 409;
       throw error;
     }
 
@@ -678,6 +821,7 @@ const getShipmentByTrackingNumber = async (req, res) => {
 };
 
 module.exports = {
+  getAdminShipments,
   createShipment,
   updateShipmentStatus,
   getOrderShipments,
