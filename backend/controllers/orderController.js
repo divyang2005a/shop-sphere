@@ -125,7 +125,9 @@ const checkoutSummary = async (req, res) => {
         });
       }
 
-      const itemTax = Number(((lineSubtotal * taxRate) / 100).toFixed(2));
+      const itemTax = Number(
+        ((lineSubtotal * taxRate) / 100).toFixed(2),
+      );
 
       subtotal += lineSubtotal;
       totalTax += itemTax;
@@ -433,9 +435,10 @@ const checkoutSummary = async (req, res) => {
     }
 
     const totalAmount = Number(
-      Math.max(0, subtotal + totalTax + shippingFee - couponDiscount).toFixed(
-        2,
-      ),
+      Math.max(
+        0,
+        subtotal + totalTax + shippingFee - couponDiscount,
+      ).toFixed(2),
     );
 
     const [shippingMethods] = await db.promise().query(
@@ -479,13 +482,18 @@ const checkoutSummary = async (req, res) => {
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| CREATE ORDER
+|--------------------------------------------------------------------------
+*/
+
 const createOrder = async (req, res) => {
-  let connection;
+  let connection = null;
   let transactionStarted = false;
+  const userId = req.user.user_id;
 
   try {
-    const userId = req.user.user_id;
-
     const {
       billing_address_id,
       shipping_address_id,
@@ -504,11 +512,22 @@ const createOrder = async (req, res) => {
       buy_now === 1 ||
       buy_now === "1";
 
+    // Payment method is mandatory for every new order.
     if (
-      !Number.isInteger(Number(billing_address_id)) ||
-      Number(billing_address_id) <= 0 ||
-      !Number.isInteger(Number(shipping_address_id)) ||
-      Number(shipping_address_id) <= 0
+      !/^[1-9]\d*$/.test(String(payment_method_id ?? "")) ||
+      !Number.isSafeInteger(Number(payment_method_id))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid payment_method_id is required",
+      });
+    }
+
+    if (
+      !/^[1-9]\d*$/.test(String(billing_address_id ?? "")) ||
+      !Number.isSafeInteger(Number(billing_address_id)) ||
+      !/^[1-9]\d*$/.test(String(shipping_address_id ?? "")) ||
+      !Number.isSafeInteger(Number(shipping_address_id))
     ) {
       return res.status(400).json({
         success: false,
@@ -534,35 +553,22 @@ const createOrder = async (req, res) => {
     let paymentMethodName = null;
     let deliveryZone = null;
 
-    if (
-      payment_method_id !== undefined &&
-      payment_method_id !== null &&
-      payment_method_id !== ""
-    ) {
-      const methodId = Number(payment_method_id);
+    const methodId = Number(payment_method_id);
 
-      if (
-        !/^[1-9]\d*$/.test(String(payment_method_id)) ||
-        !Number.isSafeInteger(methodId)
-      ) {
-        throw new Error("Invalid payment method ID");
-      }
+    const [paymentMethods] = await connection.query(
+      `SELECT id, name
+       FROM payment_methods
+       WHERE id = ? AND status = 'active'
+       LIMIT 1
+       FOR UPDATE`,
+      [methodId],
+    );
 
-      const [paymentMethods] = await connection.query(
-        `SELECT id, name
-         FROM payment_methods
-         WHERE id = ? AND status = 'active'
-         LIMIT 1
-         FOR UPDATE`,
-        [methodId],
-      );
-
-      if (!paymentMethods.length) {
-        throw new Error("Selected payment method is not available");
-      }
-
-      paymentMethodName = paymentMethods[0].name;
+    if (!paymentMethods.length) {
+      throw new Error("Selected payment method is not available");
     }
+
+    paymentMethodName = paymentMethods[0].name;
 
     const [addresses] = await connection.query(
       `SELECT id, pincode
@@ -572,7 +578,9 @@ const createOrder = async (req, res) => {
       [userId, Number(billing_address_id), Number(shipping_address_id)],
     );
 
-    const addressIds = new Set(addresses.map((address) => String(address.id)));
+    const addressIds = new Set(
+      addresses.map((address) => String(address.id)),
+    );
 
     if (
       !addressIds.has(String(Number(billing_address_id))) ||
@@ -582,7 +590,8 @@ const createOrder = async (req, res) => {
     }
 
     const shippingAddress = addresses.find(
-      (address) => String(address.id) === String(Number(shipping_address_id)),
+      (address) =>
+        String(address.id) === String(Number(shipping_address_id)),
     );
 
     let cartId = null;
@@ -592,11 +601,17 @@ const createOrder = async (req, res) => {
       const selectedProductId = Number(product_id);
       const selectedQuantity = Number(buyNowQuantity);
 
-      if (!Number.isInteger(selectedProductId) || selectedProductId <= 0) {
+      if (
+        !Number.isSafeInteger(selectedProductId) ||
+        selectedProductId <= 0
+      ) {
         throw new Error("A valid product_id is required for Buy Now");
       }
 
-      if (!Number.isInteger(selectedQuantity) || selectedQuantity <= 0) {
+      if (
+        !Number.isSafeInteger(selectedQuantity) ||
+        selectedQuantity <= 0
+      ) {
         throw new Error("Buy Now quantity must be a positive integer");
       }
 
@@ -609,7 +624,10 @@ const createOrder = async (req, res) => {
       ) {
         selectedVariantId = Number(variant_id);
 
-        if (!Number.isInteger(selectedVariantId) || selectedVariantId <= 0) {
+        if (
+          !Number.isSafeInteger(selectedVariantId) ||
+          selectedVariantId <= 0
+        ) {
           throw new Error("Invalid variant_id for Buy Now");
         }
       }
@@ -623,7 +641,7 @@ const createOrder = async (req, res) => {
         [selectedProductId],
       );
 
-      if (products.length === 0) {
+      if (!products.length) {
         throw new Error("Selected product was not found");
       }
 
@@ -647,7 +665,7 @@ const createOrder = async (req, res) => {
           [selectedVariantId, selectedProductId],
         );
 
-        if (variants.length === 0) {
+        if (!variants.length) {
           throw new Error("Selected product variant was not found");
         }
 
@@ -713,7 +731,7 @@ const createOrder = async (req, res) => {
         [userId],
       );
 
-      if (carts.length === 0) {
+      if (!carts.length) {
         throw new Error("Your cart is empty");
       }
 
@@ -740,7 +758,7 @@ const createOrder = async (req, res) => {
         [cartId],
       );
 
-      if (items.length === 0) {
+      if (!items.length) {
         throw new Error("Your cart is empty");
       }
 
@@ -776,7 +794,7 @@ const createOrder = async (req, res) => {
         );
 
         if (
-          variants.length === 0 ||
+          !variants.length ||
           String(variants[0].status).toLowerCase() !== "active"
         ) {
           throw new Error(
@@ -802,7 +820,7 @@ const createOrder = async (req, res) => {
         );
 
         if (
-          products.length === 0 ||
+          !products.length ||
           String(products[0].status).toLowerCase() !== "active"
         ) {
           throw new Error(`Product ${item.product_id} is not available`);
@@ -815,7 +833,10 @@ const createOrder = async (req, res) => {
         throw new Error(`Invalid price for product ${item.product_id}`);
       }
 
-      if (!Number.isFinite(availableStock) || itemQuantity > availableStock) {
+      if (
+        !Number.isFinite(availableStock) ||
+        itemQuantity > availableStock
+      ) {
         throw new Error(
           `Insufficient stock for product ${item.product_id}. Available stock: ${
             Number.isFinite(availableStock) ? availableStock : 0
@@ -823,14 +844,19 @@ const createOrder = async (req, res) => {
         );
       }
 
-      const lineSubtotal = Number((price * itemQuantity).toFixed(2));
+      const lineSubtotal = Number(
+        (price * itemQuantity).toFixed(2),
+      );
+
       const taxRate = Number(item.tax_percentage || 0);
 
       if (!Number.isFinite(taxRate) || taxRate < 0) {
         throw new Error(`Invalid tax rate for product ${item.product_id}`);
       }
 
-      const lineTax = Number(((lineSubtotal * taxRate) / 100).toFixed(2));
+      const lineTax = Number(
+        ((lineSubtotal * taxRate) / 100).toFixed(2),
+      );
 
       subtotal += lineSubtotal;
       totalTax += lineTax;
@@ -854,48 +880,40 @@ const createOrder = async (req, res) => {
     let shippingMethodId = null;
     let shippingZoneId = null;
 
-    if (
-      shipping_method_id !== undefined &&
-      shipping_method_id !== null &&
-      shipping_method_id !== ""
-    ) {
-      shippingMethodId = Number(shipping_method_id);
+    shippingMethodId = Number(shipping_method_id);
 
-      if (!Number.isInteger(shippingMethodId) || shippingMethodId <= 0) {
-        throw new Error("Invalid shipping method ID");
-      }
+    const [methods] = await connection.query(
+      `SELECT id, price
+       FROM shipping_methods
+       WHERE id = ? AND status = 'active'
+       LIMIT 1`,
+      [shippingMethodId],
+    );
 
-      const [methods] = await connection.query(
-        `SELECT id, price
-         FROM shipping_methods
-         WHERE id = ? AND status = 'active'`,
-        [shippingMethodId],
-      );
+    if (!methods.length) {
+      throw new Error("Active shipping method not found");
+    }
 
-      if (methods.length === 0) {
-        throw new Error("Active shipping method not found");
-      }
+    deliveryZone = await getActiveDeliveryZone(
+      connection,
+      shippingAddress.pincode,
+    );
 
-      deliveryZone = await getActiveDeliveryZone(
-        connection,
-        shippingAddress.pincode,
-      );
+    if (!deliveryZone) {
+      throw new Error("Delivery is not available at this pincode");
+    }
 
-      if (!deliveryZone) {
-        throw new Error("Delivery is not available at this pincode");
-      }
+    shippingZoneId = deliveryZone.id;
 
-      shippingZoneId = deliveryZone.id;
-      const freeThreshold = deliveryZone.free_shipping_threshold;
+    const freeThreshold = deliveryZone.free_shipping_threshold;
 
-      shippingFee =
-        freeThreshold !== null && subtotal >= Number(freeThreshold)
-          ? 0
-          : Number(deliveryZone.shipping_fee);
+    shippingFee =
+      freeThreshold !== null && subtotal >= Number(freeThreshold)
+        ? 0
+        : Number(deliveryZone.shipping_fee);
 
-      if (!Number.isFinite(shippingFee) || shippingFee < 0) {
-        throw new Error("Invalid shipping fee");
-      }
+    if (!Number.isFinite(shippingFee) || shippingFee < 0) {
+      throw new Error("Invalid shipping fee");
     }
 
     let couponId = null;
@@ -927,7 +945,7 @@ const createOrder = async (req, res) => {
         [normalizedCouponCode],
       );
 
-      if (coupons.length === 0) {
+      if (!coupons.length) {
         throw new Error("Invalid coupon code");
       }
 
@@ -1028,11 +1046,16 @@ const createOrder = async (req, res) => {
         );
 
         if (Number(previousOrders[0].total_orders) > 0) {
-          throw new Error("This coupon is available only on your first order");
+          throw new Error(
+            "This coupon is available only on your first order",
+          );
         }
       }
 
-      const discountType = String(coupon.discount_type).trim().toLowerCase();
+      const discountType = String(coupon.discount_type)
+        .trim()
+        .toLowerCase();
+
       const discountValue = Number(coupon.discount_value);
 
       if (!Number.isFinite(discountValue) || discountValue <= 0) {
@@ -1052,8 +1075,14 @@ const createOrder = async (req, res) => {
       if (coupon.maximum_discount !== null) {
         const maximumDiscount = Number(coupon.maximum_discount);
 
-        if (Number.isFinite(maximumDiscount) && maximumDiscount >= 0) {
-          couponDiscount = Math.min(couponDiscount, maximumDiscount);
+        if (
+          Number.isFinite(maximumDiscount) &&
+          maximumDiscount >= 0
+        ) {
+          couponDiscount = Math.min(
+            couponDiscount,
+            maximumDiscount,
+          );
         }
       }
 
@@ -1063,15 +1092,17 @@ const createOrder = async (req, res) => {
     }
 
     const totalAmount = Number(
-      Math.max(0, subtotal + totalTax + shippingFee - couponDiscount).toFixed(
-        2,
-      ),
+      Math.max(
+        0,
+        subtotal + totalTax + shippingFee - couponDiscount,
+      ).toFixed(2),
     );
 
-    const orderNumber = `SS-${Date.now()}-${crypto
-      .randomBytes(3)
-      .toString("hex")
-      .toUpperCase()}`;
+    const orderNumber =
+      `SS-${Date.now()}-${crypto
+        .randomBytes(3)
+        .toString("hex")
+        .toUpperCase()}`;
 
     const [orderResult] = await connection.query(
       `INSERT INTO orders
@@ -1103,35 +1134,37 @@ const createOrder = async (req, res) => {
 
     const orderId = orderResult.insertId;
 
+    // Create a pending payment record for the new order.
+    await connection.query(
+      `INSERT INTO payments
+       (order_id, user_id, payment_method, amount, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'pending', NOW(), NOW())`,
+      [orderId, userId, paymentMethodName, totalAmount],
+    );
+
     // Automatically create shipment with tracking details.
-    // The courier name is a placeholder; this does not book a real courier.
+    // This does not book a real courier.
     let selectedShippingMethod = null;
 
-    if (shippingMethodId !== null) {
-      const [shipmentMethods] = await connection.query(
-        `SELECT id, name, estimated_days
-         FROM shipping_methods
-         WHERE id = ? AND status = 'active'
-         LIMIT 1
-         FOR UPDATE`,
-        [shippingMethodId],
-      );
+    const [shipmentMethods] = await connection.query(
+      `SELECT id, name, estimated_days
+       FROM shipping_methods
+       WHERE id = ? AND status = 'active'
+       LIMIT 1
+       FOR UPDATE`,
+      [shippingMethodId],
+    );
 
-      if (shipmentMethods.length === 0) {
-        throw new Error("Active shipping method not found for shipment");
-      }
-
-      selectedShippingMethod = shipmentMethods[0];
-    } else {
-      throw new Error("A shipping method is required to create a shipment");
+    if (!shipmentMethods.length) {
+      throw new Error("Active shipping method not found for shipment");
     }
+
+    selectedShippingMethod = shipmentMethods[0];
 
     const estimatedDaysText = String(
       selectedShippingMethod.estimated_days ?? "",
     ).trim();
 
-    // Supports estimates such as "3-5 days", "1-2", and "3 days".
-    // If a range is configured, use its maximum value.
     const estimateMatch = estimatedDaysText.match(
       /^(\d+)\s*(?:-\s*(\d+))?(?:\s*days?)?$/i,
     );
@@ -1198,7 +1231,10 @@ const createOrder = async (req, res) => {
       `INSERT INTO shipment_tracking
          (shipment_id, status, location, description)
        VALUES (?, 'pending', NULL, ?)`,
-      [shipmentId, "Shipment created automatically when the order was placed"],
+      [
+        shipmentId,
+        "Shipment created automatically when the order was placed",
+      ],
     );
 
     console.log("SHIPMENT CREATED", {
@@ -1213,8 +1249,7 @@ const createOrder = async (req, res) => {
     if (couponId !== null) {
       await connection.query(
         `INSERT INTO coupon_usages
-         (coupon_id, user_id, order_id,
-          discount_amount, used_at)
+         (coupon_id, user_id, order_id, discount_amount, used_at)
          VALUES (?, ?, ?, ?, NOW())`,
         [couponId, userId, orderId, couponDiscount],
       );
@@ -1232,7 +1267,8 @@ const createOrder = async (req, res) => {
       const totalUsers = Number(usageCounts[0].total_users);
 
       const usageLimitReached =
-        couponUsageLimit !== null && totalUses >= Number(couponUsageLimit);
+        couponUsageLimit !== null &&
+        totalUses >= Number(couponUsageLimit);
 
       const userLimitReached =
         couponUserLimit !== null &&
@@ -1277,7 +1313,12 @@ const createOrder = async (req, res) => {
              AND product_id = ?
              AND status = 'active'
              AND stock_quantity >= ?`,
-          [item.quantity, item.variant_id, item.product_id, item.quantity],
+          [
+            item.quantity,
+            item.variant_id,
+            item.product_id,
+            item.quantity,
+          ],
         );
 
         if (updateResult.affectedRows !== 1) {
@@ -1296,7 +1337,9 @@ const createOrder = async (req, res) => {
         );
 
         if (updateResult.affectedRows !== 1) {
-          throw new Error(`Insufficient stock for product ${item.product_id}`);
+          throw new Error(
+            `Insufficient stock for product ${item.product_id}`,
+          );
         }
       }
     }
@@ -1309,15 +1352,17 @@ const createOrder = async (req, res) => {
     );
 
     if (!isBuyNow) {
-      await connection.query(`DELETE FROM cart_items WHERE cart_id = ?`, [
-        cartId,
-      ]);
+      await connection.query(
+        `DELETE FROM cart_items WHERE cart_id = ?`,
+        [cartId],
+      );
     }
 
-    const invoiceNumber = `SS-INV-${orderId}-${crypto
-      .randomBytes(4)
-      .toString("hex")
-      .toUpperCase()}`;
+    const invoiceNumber =
+      `SS-INV-${orderId}-${crypto
+        .randomBytes(4)
+        .toString("hex")
+        .toUpperCase()}`;
 
     await connection.query(
       `INSERT INTO invoices (order_id, invoice_number)
@@ -1347,7 +1392,10 @@ const createOrder = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error("Order creation notification error:", notificationError);
+      console.error(
+        "Order creation notification error:",
+        notificationError,
+      );
     }
 
     console.log("ORDER COMMITTED - STARTING EMAIL", {
@@ -1365,7 +1413,7 @@ const createOrder = async (req, res) => {
         [userId],
       );
 
-      if (userRows.length === 0 || !userRows[0].email) {
+      if (!userRows.length || !userRows[0].email) {
         console.warn(
           "No customer email found for order:",
           orderNumber,
@@ -1384,7 +1432,6 @@ const createOrder = async (req, res) => {
           "",
           `Order Number: ${orderNumber}`,
           `Subtotal: INR ${Number(subtotal).toFixed(2)}`,
-          "Discount: INR 0.00",
           `Coupon Discount: INR ${Number(couponDiscount).toFixed(2)}`,
           `Tax: INR ${Number(totalTax).toFixed(2)}`,
           `Shipping Fee: INR ${Number(shippingFee).toFixed(2)}`,
@@ -1464,7 +1511,9 @@ const createOrder = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      message: isExpectedError ? error.message : "Failed to create order",
+      message: isExpectedError
+        ? error.message
+        : "Failed to create order",
     });
   } finally {
     if (connection) {
@@ -1472,6 +1521,12 @@ const createOrder = async (req, res) => {
     }
   }
 };
+
+/*
+|--------------------------------------------------------------------------
+| GET ALL CUSTOMER ORDERS
+|--------------------------------------------------------------------------
+*/
 
 const getOrders = async (req, res) => {
   try {
@@ -1501,6 +1556,12 @@ const getOrders = async (req, res) => {
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| GET ORDER DETAILS
+|--------------------------------------------------------------------------
+*/
+
 const getOrderById = async (req, res) => {
   try {
     const userId = req.user.user_id;
@@ -1521,7 +1582,7 @@ const getOrderById = async (req, res) => {
       [orderId, userId],
     );
 
-    if (orders.length === 0) {
+    if (!orders.length) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
@@ -1553,6 +1614,12 @@ const getOrderById = async (req, res) => {
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| CANCEL ORDER
+|--------------------------------------------------------------------------
+*/
+
 const cancelOrder = async (req, res) => {
   let connection;
   let transactionStarted = false;
@@ -1569,6 +1636,7 @@ const cancelOrder = async (req, res) => {
     }
 
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
@@ -1580,7 +1648,7 @@ const cancelOrder = async (req, res) => {
       [orderId, userId],
     );
 
-    if (orders.length === 0) {
+    if (!orders.length) {
       await connection.rollback();
       transactionStarted = false;
 
@@ -1704,6 +1772,12 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| TRACK ORDER
+|--------------------------------------------------------------------------
+*/
+
 const trackOrder = async (req, res) => {
   try {
     const userId = req.user.user_id;
@@ -1725,7 +1799,7 @@ const trackOrder = async (req, res) => {
       [orderId, userId],
     );
 
-    if (orders.length === 0) {
+    if (!orders.length) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
@@ -1757,6 +1831,12 @@ const trackOrder = async (req, res) => {
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| REQUEST ORDER RETURN
+|--------------------------------------------------------------------------
+*/
+
 const requestReturn = async (req, res) => {
   let connection;
   let transactionStarted = false;
@@ -1785,6 +1865,7 @@ const requestReturn = async (req, res) => {
     }
 
     connection = await db.promise().getConnection();
+
     await connection.beginTransaction();
     transactionStarted = true;
 
@@ -1796,7 +1877,7 @@ const requestReturn = async (req, res) => {
       [orderId, userId],
     );
 
-    if (orders.length === 0) {
+    if (!orders.length) {
       await connection.rollback();
       transactionStarted = false;
 
@@ -1824,7 +1905,7 @@ const requestReturn = async (req, res) => {
       [orderItemId, orderId],
     );
 
-    if (items.length === 0) {
+    if (!items.length) {
       await connection.rollback();
       transactionStarted = false;
 

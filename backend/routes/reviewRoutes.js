@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const {
+  createSiteReview,
+  getSiteReviews,
+  deleteOwnSiteReview,
   createReview,
   getProductReviews,
   getMyReviews,
@@ -11,6 +14,11 @@ const {
 
 const authMiddleware = require("../middleware/authMiddleware");
 const adminMiddleware = require("../middleware/adminMiddleware");
+
+// Site reviews
+router.post("/site", authMiddleware, createSiteReview);
+router.get("/site", getSiteReviews);
+router.delete("/site/:reviewId", authMiddleware, deleteOwnSiteReview);
 
 // Customer routes
 router.post("/", authMiddleware, createReview);

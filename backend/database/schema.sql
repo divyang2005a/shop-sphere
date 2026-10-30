@@ -191,7 +191,7 @@ CREATE TABLE `coupon_usages` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `coupon_id` bigint(20) unsigned NOT NULL,
   `user_id` bigint(20) unsigned NOT NULL,
-  `order_id` bigint(20) unsigned NOT NULL,
+  `order_id` bigint(20) unsigned DEFAULT NULL,
   `discount_amount` decimal(12,2) NOT NULL,
   `used_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`)
@@ -415,6 +415,29 @@ CREATE TABLE `notifications` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notification_campaigns`
+--
+
+DROP TABLE IF EXISTS `notification_campaigns`;
+CREATE TABLE `notification_campaigns` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `type` varchar(100) NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `data` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`data`)),
+  `status` varchar(20) NOT NULL DEFAULT 'draft',
+  `scheduled_at` datetime DEFAULT NULL,
+  `published_at` datetime DEFAULT NULL,
+  `recipient_count` int(10) unsigned DEFAULT NULL,
+  `created_by` bigint(20) unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_notification_campaigns_status_schedule` (`status`, `scheduled_at`),
+  KEY `idx_notification_campaigns_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `order_items`
@@ -923,6 +946,25 @@ CREATE TABLE `review_reports` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `site_reviews`
+--
+
+DROP TABLE IF EXISTS `site_reviews`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `site_reviews` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) unsigned NOT NULL,
+  `rating` tinyint(4) NOT NULL,
+  `review` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_site_reviews_created_at` (`created_at`),
+  KEY `idx_site_reviews_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `reviews`
 --
 
@@ -933,7 +975,7 @@ CREATE TABLE `reviews` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) unsigned NOT NULL,
   `product_id` bigint(20) unsigned NOT NULL,
-  `order_id` bigint(20) unsigned NOT NULL,
+  `order_id` bigint(20) unsigned DEFAULT NULL,
   `rating` tinyint(4) NOT NULL,
   `review` text DEFAULT NULL,
   `verified_purchase` tinyint(1) DEFAULT 0,

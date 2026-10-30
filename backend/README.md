@@ -85,6 +85,27 @@ starting the updated backend:
 /opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261027_add_coupon_user_limit.sql
 ```
 
+For an existing database, apply the site reviews migration once before using
+the site review endpoints:
+
+```bash
+/opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261028_add_site_reviews.sql
+```
+
+For an existing database, apply this migration to allow product reviews from
+customers without a delivered purchase:
+
+```bash
+/opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261028_allow_unverified_product_reviews.sql
+```
+
+For an existing database, apply the notification campaigns migration before
+using admin notification campaigns or scheduled notifications:
+
+```bash
+/opt/lampp/bin/mysql -u root -D shop_sphere < database/migrations/20261030_create_notification_campaigns.sql
+```
+
 Coupon creation accepts an optional `user_limit` integer. It limits the number
 of distinct users who can redeem that coupon; once reached, the coupon is
 automatically marked inactive. The admin coupon list returns `user_count` and

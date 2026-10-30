@@ -346,6 +346,63 @@ const getProductDetails = (req, res) => {
   });
 };
 
+const getPublicProductImages = (req, res) => {
+  const { productId } = req.params;
+
+  if (!/^[1-9]\d*$/.test(String(productId ?? ""))) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid product ID",
+    });
+  }
+
+  db.query(
+    "SELECT id FROM products WHERE id = ? LIMIT 1",
+    [productId],
+    (productErr, products) => {
+      if (productErr) {
+        return handleDbError(productErr, res, "Failed to fetch product");
+      }
+
+      if (products.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found",
+        });
+      }
+
+      const sql = `
+        SELECT
+          id,
+          product_id,
+          image,
+          image_type,
+          is_primary,
+          sort_order
+        FROM product_images
+        WHERE product_id = ?
+        ORDER BY is_primary DESC, sort_order ASC, id ASC
+      `;
+
+      db.query(sql, [productId], (imageErr, images) => {
+        if (imageErr) {
+          return handleDbError(
+            imageErr,
+            res,
+            "Failed to fetch product images",
+          );
+        }
+
+        return res.status(200).json({
+          success: true,
+          count: images.length,
+          images,
+        });
+      });
+    },
+  );
+};
+
 // Add product
 const createProduct = (req, res) => {
   const body = req.body || {};
@@ -1768,6 +1825,7 @@ const updateReturnStatus = (req, res) => {
 module.exports = {
   getProducts,
   getProductDetails,
+  getPublicProductImages,
   createProduct,
   updateProduct,
   deleteProduct,

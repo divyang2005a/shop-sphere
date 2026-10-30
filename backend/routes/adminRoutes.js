@@ -63,12 +63,19 @@ const {
   getAdminOrders,
   getAdminOrderById,
   updateAdminOrderStatus,
+  confirmOrderPayment,
 } = require("../controllers/adminOrderController");
 
 // Invoices and packing slips
 const { getAdminOrderInvoice } = require("../controllers/invoiceController");
 const { getAdminInvoicePdf } = require("../controllers/invoicePdfController");
 const { getPackingSlipPdf } = require("../controllers/packingSlipController");
+const {
+  getAllReviewsForAdmin,
+  getSiteReviews,
+  deleteReviewForAdmin,
+  deleteSiteReviewForAdmin,
+} = require("../controllers/reviewController");
 
 // Credit notes
 const {
@@ -100,6 +107,15 @@ const {
   getAdminPaymentMethods,
   updatePaymentMethod,
 } = require("../controllers/paymentMethodController");
+const { getAdminPayments } = require("../controllers/adminPaymentController");
+const {
+  getAdminNotifications,
+  createAdminNotification,
+  updateAdminNotification,
+  deleteAdminNotification,
+  publishAdminNotification,
+  scheduleAdminNotification,
+} = require("../controllers/adminNotificationController");
 
 // Shipping and delivery areas
 const {
@@ -178,6 +194,38 @@ router.delete(
   authMiddleware,
   adminMiddleware,
   deleteProduct,
+);
+
+// =====================================================
+// REVIEWS
+// =====================================================
+
+router.get(
+  "/reviews",
+  authMiddleware,
+  adminMiddleware,
+  getAllReviewsForAdmin,
+);
+
+router.get(
+  "/site-reviews",
+  authMiddleware,
+  adminMiddleware,
+  getSiteReviews,
+);
+
+router.delete(
+  "/reviews/:reviewId",
+  authMiddleware,
+  adminMiddleware,
+  deleteReviewForAdmin,
+);
+
+router.delete(
+  "/site-reviews/:reviewId",
+  authMiddleware,
+  adminMiddleware,
+  deleteSiteReviewForAdmin,
 );
 
 // =====================================================
@@ -344,6 +392,13 @@ router.patch(
 // PAYMENT METHODS
 // Configuration only; no payment gateway integration
 // =====================================================
+
+router.get(
+  "/payments",
+  authMiddleware,
+  adminMiddleware,
+  getAdminPayments,
+);
 
 router.get(
   "/payment-methods",
@@ -578,6 +633,59 @@ router.get(
   authMiddleware,
   adminMiddleware,
   getInventoryReport,
+);
+
+router.patch(
+  "/orders/:order_id/payment-status",
+  authMiddleware,
+  adminMiddleware,
+  confirmOrderPayment,
+);
+
+// =====================================================
+// NOTIFICATIONS
+// =====================================================
+
+router.get(
+  "/notifications",
+  authMiddleware,
+  adminMiddleware,
+  getAdminNotifications,
+);
+
+router.post(
+  "/notifications",
+  authMiddleware,
+  adminMiddleware,
+  createAdminNotification,
+);
+
+router.put(
+  "/notifications/:notificationId",
+  authMiddleware,
+  adminMiddleware,
+  updateAdminNotification,
+);
+
+router.delete(
+  "/notifications/:notificationId",
+  authMiddleware,
+  adminMiddleware,
+  deleteAdminNotification,
+);
+
+router.post(
+  "/notifications/:notificationId/publish",
+  authMiddleware,
+  adminMiddleware,
+  publishAdminNotification,
+);
+
+router.post(
+  "/notifications/:notificationId/schedule",
+  authMiddleware,
+  adminMiddleware,
+  scheduleAdminNotification,
 );
 
 module.exports = router;

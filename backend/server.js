@@ -7,6 +7,9 @@ const multer = require("multer");
 const helmet = require("helmet");
 
 const { verifySMTP } = require("./services/emailService");
+const {
+  startNotificationScheduler,
+} = require("./services/notificationScheduler");
 
 const app = express();
 
@@ -128,6 +131,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`ShopSphere backend running on port ${PORT}`);
   console.log("Allowed frontend origin: http://localhost:5173");
+  startNotificationScheduler();
 });
 
 // Verify SMTP connection

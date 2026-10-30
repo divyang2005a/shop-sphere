@@ -143,11 +143,8 @@ const createShipment = async (req, res) => {
     const orderId = Number(req.params.orderId);
     const adminId = getUserId(req);
 
-    const {
-      courier_name,
-      tracking_number,
-      expected_delivery_date,
-    } = req.body || {};
+    const { courier_name, tracking_number, expected_delivery_date } =
+      req.body || {};
 
     if (!isPositiveId(orderId)) {
       return res.status(400).json({
@@ -181,9 +178,11 @@ const createShipment = async (req, res) => {
 
     let deliveryDate = null;
 
-    if (expected_delivery_date !== undefined &&
-        expected_delivery_date !== null &&
-        expected_delivery_date !== "") {
+    if (
+      expected_delivery_date !== undefined &&
+      expected_delivery_date !== null &&
+      expected_delivery_date !== ""
+    ) {
       if (
         typeof expected_delivery_date !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(expected_delivery_date)
@@ -219,7 +218,7 @@ const createShipment = async (req, res) => {
        FROM orders
        WHERE id = ?
        FOR UPDATE`,
-      [orderId]
+      [orderId],
     );
 
     if (orders.length === 0) {
@@ -232,20 +231,18 @@ const createShipment = async (req, res) => {
 
     if (
       ["cancelled", "delivered"].includes(
-        String(order.order_status).toLowerCase()
+        String(order.order_status).toLowerCase(),
       )
     ) {
       const error = new Error(
-        `Cannot create a shipment for an order that is ${order.order_status}`
+        `Cannot create a shipment for an order that is ${order.order_status}`,
       );
       error.statusCode = 400;
       throw error;
     }
 
     if (!order.shipping_method_id) {
-      const error = new Error(
-        "This order has no shipping method assigned"
-      );
+      const error = new Error("This order has no shipping method assigned");
       error.statusCode = 400;
       throw error;
     }
@@ -256,13 +253,11 @@ const createShipment = async (req, res) => {
        WHERE order_id = ?
        LIMIT 1
        FOR UPDATE`,
-      [orderId]
+      [orderId],
     );
 
     if (existingShipments.length > 0) {
-      const error = new Error(
-        "A shipment already exists for this order"
-      );
+      const error = new Error("A shipment already exists for this order");
       error.statusCode = 409;
       throw error;
     }
@@ -278,7 +273,7 @@ const createShipment = async (req, res) => {
         courier_name.trim(),
         tracking_number?.trim() || null,
         deliveryDate,
-      ]
+      ],
     );
 
     const shipmentId = result.insertId;
@@ -287,7 +282,7 @@ const createShipment = async (req, res) => {
       `INSERT INTO shipment_tracking
         (shipment_id, status, location, description)
        VALUES (?, 'pending', NULL, ?)`,
-      [shipmentId, "Shipment record created"]
+      [shipmentId, "Shipment record created"],
     );
 
     await connection.commit();
@@ -308,10 +303,7 @@ const createShipment = async (req, res) => {
         },
       });
     } catch (notificationError) {
-      console.error(
-        "Shipment creation notification error:",
-        notificationError
-      );
+      console.error("Shipment creation notification error:", notificationError);
     }
 
     return res.status(201).json({
@@ -349,7 +341,7 @@ const createShipment = async (req, res) => {
   }
 };
 
-// Admin: Update shipment status and add tracking event
+// Admin: Update shipment status, tracking event and audit log
 // Admin: Update shipment status, tracking event and audit log
 const updateShipmentStatus = async (req, res) => {
   let connection;
@@ -358,7 +350,13 @@ const updateShipmentStatus = async (req, res) => {
   try {
     const shipmentId = Number(req.params.shipmentId);
     const adminId = getUserId(req);
-    const { status, location, description } = req.body || {};
+
+    const {
+      status,
+      location,
+      description,
+      cash_received,
+    } = req.body || {};
 
     const allowedStatuses = [
       "pending",
@@ -372,6 +370,22 @@ const updateShipmentStatus = async (req, res) => {
       "cancelled",
     ];
 
+    const shipmentRank = {
+      pending: 0,
+      ready_to_ship: 1,
+      shipped: 2,
+      in_transit: 3,
+      out_for_delivery: 4,
+      delivered: 5,
+    };
+
+    const terminalStatuses = [
+      "delivered",
+      "failed_delivery",
+      "returned",
+      "cancelled",
+    ];
+
     if (!isPositiveId(shipmentId)) {
       return res.status(400).json({
         success: false,
@@ -379,7 +393,7 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    if (!adminId) {
+    if (!isPositiveId(adminId)) {
       return res.status(401).json({
         success: false,
         message: "Invalid admin authentication",
@@ -413,14 +427,22 @@ const updateShipmentStatus = async (req, res) => {
     if (
       description !== undefined &&
       description !== null &&
-      (
-        typeof description !== "string" ||
-        description.length > 1000
-      )
+      (typeof description !== "string" ||
+        description.length > 1000)
     ) {
       return res.status(400).json({
         success: false,
         message: "Description must not exceed 1000 characters",
+      });
+    }
+
+    if (
+      cash_received !== undefined &&
+      typeof cash_received !== "boolean"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "cash_received must be true or false",
       });
     }
 
@@ -429,27 +451,42 @@ const updateShipmentStatus = async (req, res) => {
         ? location.trim()
         : null;
 
+    let eventDescription =
+      typeof description === "string" && description.trim()
+        ? description.trim()
+        : `Shipment status updated to ${normalizedStatus.replace(
+            /_/g,
+            " ",
+          )}`;
+
     connection = await db.promise().getConnection();
 
     await connection.beginTransaction();
     transactionStarted = true;
 
-    // Lock shipment and retrieve its existing order status.
+    // 1. Lock shipment and its order.
     const [shipments] = await connection.query(
-      `SELECT
-         s.id,
-         s.order_id,
-         s.status,
-         s.tracking_number,
-         s.courier_name,
-         o.user_id,
-         o.order_number,
-         o.order_status
-       FROM shipments s
-       JOIN orders o ON o.id = s.order_id
-       WHERE s.id = ?
-       FOR UPDATE`,
-      [shipmentId]
+      `
+        SELECT
+          s.id,
+          s.order_id,
+          s.status,
+          s.tracking_number,
+          s.courier_name,
+          s.shipped_at,
+          s.delivered_at,
+          o.user_id,
+          o.order_number,
+          o.order_status,
+          o.payment_method,
+          o.payment_status,
+          o.total_amount
+        FROM shipments s
+        JOIN orders o ON o.id = s.order_id
+        WHERE s.id = ?
+        FOR UPDATE
+      `,
+      [shipmentId],
     );
 
     if (shipments.length === 0) {
@@ -461,181 +498,361 @@ const updateShipmentStatus = async (req, res) => {
     const shipment = shipments[0];
 
     const currentStatus = String(
-      shipment.status || "pending"
+      shipment.status || "pending",
     ).toLowerCase();
 
     const oldOrderStatus = String(
-      shipment.order_status
+      shipment.order_status || "pending",
     ).toLowerCase();
+
+    const paymentMethod = String(
+      shipment.payment_method || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const isCOD = [
+      "cod",
+      "cash on delivery",
+      "cash_on_delivery",
+      "cash-on-delivery",
+    ].includes(paymentMethod);
+
+    // COD delivery must include an explicit cash confirmation.
+    if (
+      normalizedStatus === "delivered" &&
+      isCOD &&
+      typeof cash_received !== "boolean"
+    ) {
+      const error = new Error(
+        "For COD delivery, include boolean cash_received in the request body (true if cash was collected, false otherwise)",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
 
     if (currentStatus === normalizedStatus) {
       const error = new Error(
-        `Shipment is already ${normalizedStatus}`
+        `Shipment is already ${normalizedStatus}`,
       );
       error.statusCode = 400;
       throw error;
     }
 
-    if (oldOrderStatus === "cancelled") {
+    if (["cancelled", "delivered"].includes(oldOrderStatus)) {
       const error = new Error(
-        "Cannot update shipment for a cancelled order"
+        `Cannot update shipment for an order that is ${oldOrderStatus}`,
       );
       error.statusCode = 400;
       throw error;
     }
 
-    if (["delivered", "cancelled"].includes(currentStatus)) {
+    if (terminalStatuses.includes(currentStatus)) {
       const error = new Error(
-        `Cannot update a shipment after it is ${currentStatus}`
+        `Cannot update shipment after it is ${currentStatus}`,
       );
       error.statusCode = 400;
       throw error;
     }
 
-    // Update shipment and milestone timestamps.
+    // 2. Prevent shipment status regression.
+    const currentRank = shipmentRank[currentStatus];
+    const nextRank = shipmentRank[normalizedStatus];
+
+    if (
+      currentRank !== undefined &&
+      nextRank !== undefined &&
+      nextRank < currentRank
+    ) {
+      const error = new Error(
+        `Cannot move shipment backwards from ${currentStatus} to ${normalizedStatus}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // 3. Update shipment status and milestone timestamps.
     await connection.query(
-      `UPDATE shipments
-       SET status = ?,
-           shipped_at = CASE
-             WHEN ? = 'shipped' AND shipped_at IS NULL
-             THEN NOW()
-             ELSE shipped_at
-           END,
-           delivered_at = CASE
-             WHEN ? = 'delivered' AND delivered_at IS NULL
-             THEN NOW()
-             ELSE delivered_at
-           END
-       WHERE id = ?`,
+      `
+        UPDATE shipments
+        SET status = ?,
+            shipped_at = CASE
+              WHEN ? IN (
+                'shipped',
+                'in_transit',
+                'out_for_delivery',
+                'delivered'
+              )
+              AND shipped_at IS NULL
+              THEN NOW()
+              ELSE shipped_at
+            END,
+            delivered_at = CASE
+              WHEN ? = 'delivered'
+              AND delivered_at IS NULL
+              THEN NOW()
+              ELSE delivered_at
+            END
+        WHERE id = ?
+      `,
       [
         normalizedStatus,
         normalizedStatus,
         normalizedStatus,
         shipmentId,
-      ]
+      ],
     );
 
-    const eventDescription =
-      typeof description === "string" && description.trim()
-        ? description.trim()
-        : `Shipment status updated to ${normalizedStatus.replace(/_/g, " ")}`;
-
-    // Preserve the shipment tracking timeline.
+    // 4. Add shipment tracking history.
     await connection.query(
-      `INSERT INTO shipment_tracking
-         (shipment_id, status, location, description)
-       VALUES (?, ?, ?, ?)`,
+      `
+        INSERT INTO shipment_tracking
+          (shipment_id, status, location, description)
+        VALUES (?, ?, ?, ?)
+      `,
       [
         shipmentId,
         normalizedStatus,
         normalizedLocation,
         eventDescription,
-      ]
+      ],
     );
 
-    // Keep the existing order lifecycle synchronization.
-    let newOrderStatus = null;
+    // 5. Synchronize order status.
+    let newOrderStatus = oldOrderStatus;
 
     if (
-      ["shipped", "in_transit", "out_for_delivery"].includes(
-        normalizedStatus
-      )
+      [
+        "shipped",
+        "in_transit",
+        "out_for_delivery",
+      ].includes(normalizedStatus)
     ) {
       newOrderStatus = "shipped";
     } else if (normalizedStatus === "delivered") {
       newOrderStatus = "delivered";
+    } else if (normalizedStatus === "cancelled") {
+      newOrderStatus = "cancelled";
     }
 
-    if (
-      newOrderStatus &&
-      oldOrderStatus !== newOrderStatus &&
-      oldOrderStatus !== "delivered"
-    ) {
+    if (newOrderStatus !== oldOrderStatus) {
+      const orderRank = {
+        pending: 0,
+        confirmed: 1,
+        processing: 2,
+        packed: 3,
+        shipped: 4,
+        delivered: 5,
+      };
+
+      if (
+        newOrderStatus === "shipped" &&
+        orderRank[oldOrderStatus] !== undefined &&
+        orderRank[oldOrderStatus] > orderRank.shipped
+      ) {
+        const error = new Error(
+          `Cannot move order backwards from ${oldOrderStatus} to shipped`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
       await connection.query(
-        `UPDATE orders
-         SET order_status = ?, updated_at = NOW()
-         WHERE id = ?`,
-        [newOrderStatus, shipment.order_id]
+        `
+          UPDATE orders
+          SET order_status = ?,
+              updated_at = NOW()
+          WHERE id = ?
+        `,
+        [newOrderStatus, shipment.order_id],
       );
 
       await connection.query(
-        `INSERT INTO order_status_history
-           (order_id, status, note, changed_by, created_at)
-         VALUES (?, ?, ?, ?, NOW())`,
+        `
+          INSERT INTO order_status_history
+            (order_id, status, note, changed_by, created_at)
+          VALUES (?, ?, ?, ?, NOW())
+        `,
         [
           shipment.order_id,
           newOrderStatus,
-          `Shipment status updated to ${normalizedStatus.replace(/_/g, " ")}`,
-          adminId,
-        ]
+          `Shipment status updated to ${normalizedStatus.replace(
+            /_/g,
+            " ",
+          )}`,
+          Number(adminId),
+        ],
       );
     }
 
-    const finalOrderStatus = newOrderStatus || oldOrderStatus;
+    // 6. COD payment handling.
+    // COD is marked paid only when the admin confirms cash receipt.
+    // UPI and other methods are never auto-marked paid here.
+    let newPaymentStatus = String(
+      shipment.payment_status || "pending",
+    ).toLowerCase();
 
-    // Capture previous and new values for the audit record.
-    const oldValues = {
-      status: currentStatus,
-      order_status: oldOrderStatus,
-    };
+    let paymentUpdated = false;
 
-    const newValues = {
-      status: normalizedStatus,
-      order_status: finalOrderStatus,
-      location: normalizedLocation,
-      description: eventDescription,
-    };
+    if (
+      normalizedStatus === "delivered" &&
+      isCOD &&
+      cash_received === true
+    ) {
+      if (newPaymentStatus !== "paid") {
+        const [payments] = await connection.query(
+          `
+            SELECT id, status, payment_method
+            FROM payments
+            WHERE order_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [shipment.order_id],
+        );
 
-    // Save audit log in the same transaction.
-    // If the audit insert fails, the status update is rolled back.
+        if (payments.length > 0) {
+          const payment = payments[0];
+
+          await connection.query(
+            `
+              UPDATE payments
+              SET status = 'paid',
+                  paid_at = COALESCE(paid_at, NOW()),
+                  updated_at = NOW()
+              WHERE id = ?
+            `,
+            [payment.id],
+          );
+        } else {
+          // Create a payment record only if no payment record exists.
+          await connection.query(
+            `
+              INSERT INTO payments
+                (
+                  order_id,
+                  user_id,
+                  payment_method,
+                  amount,
+                  status,
+                  paid_at
+                )
+              VALUES (?, ?, ?, ?, 'paid', NOW())
+            `,
+            [
+              shipment.order_id,
+              shipment.user_id,
+              shipment.payment_method,
+              shipment.total_amount,
+            ],
+          );
+        }
+
+        await connection.query(
+          `
+            UPDATE orders
+            SET payment_status = 'paid',
+                updated_at = NOW()
+            WHERE id = ?
+          `,
+          [shipment.order_id],
+        );
+
+        newPaymentStatus = "paid";
+        paymentUpdated = true;
+
+        eventDescription = `${eventDescription} - COD cash received and payment confirmed`;
+      }
+    }
+
+    // If COD cash has not been received, leave payment status unchanged.
+    // For UPI, use the separate admin payment-confirmation endpoint.
+
+    // 7. Insert audit log.
     await connection.query(
-      `INSERT INTO admin_audit_logs
-         (
-           admin_id,
-           action,
-           entity_type,
-           entity_id,
-           old_values,
-           new_values,
-           ip_address
-         )
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `
+        INSERT INTO admin_audit_logs
+          (
+            admin_id,
+            action,
+            entity_type,
+            entity_id,
+            old_values,
+            new_values,
+            ip_address
+          )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
       [
-        adminId,
+        Number(adminId),
         "PATCH /api/shipments/admin/:shipmentId/status",
         "shipments",
         shipmentId,
-        JSON.stringify(oldValues),
-        JSON.stringify(newValues),
+        JSON.stringify({
+          shipment_status: currentStatus,
+          order_status: oldOrderStatus,
+          payment_status: shipment.payment_status,
+        }),
+        JSON.stringify({
+          shipment_status: normalizedStatus,
+          order_status: newOrderStatus,
+          payment_status: newPaymentStatus,
+          payment_updated: paymentUpdated,
+          cash_received:
+            normalizedStatus === "delivered" && isCOD
+              ? cash_received
+              : null,
+          location: normalizedLocation,
+          description: eventDescription,
+        }),
         (req.ip || "").slice(0, 45) || null,
-      ]
+      ],
     );
 
-    // Commit shipment, tracking, order history and audit together.
+    // 8. Commit all database changes together.
     await connection.commit();
     transactionStarted = false;
 
-    // Notify the customer after the transaction succeeds.
+    // 9. Notify customer after commit.
     try {
       await createNotification({
         userId: shipment.user_id,
         type: "shipment_status_updated",
         title: "Shipment update",
-        message:
-          `Your shipment for order ${shipment.order_number} is now ${normalizedStatus.replace(/_/g, " ")}.`,
+        message: `Your shipment for order ${
+          shipment.order_number
+        } is now ${normalizedStatus.replace(/_/g, " ")}.`,
         data: {
           order_id: shipment.order_id,
           order_number: shipment.order_number,
           shipment_id: shipmentId,
           tracking_number: shipment.tracking_number,
           shipment_status: normalizedStatus,
-          order_status: finalOrderStatus,
+          order_status: newOrderStatus,
+          payment_status: newPaymentStatus,
         },
       });
+
+      if (paymentUpdated) {
+        await createNotification({
+          userId: shipment.user_id,
+          type: "payment_received",
+          title: "COD payment received",
+          message: `Cash payment for order ${shipment.order_number} has been confirmed.`,
+          data: {
+            order_id: shipment.order_id,
+            order_number: shipment.order_number,
+            shipment_id: shipmentId,
+            payment_status: "paid",
+            amount: shipment.total_amount,
+          },
+        });
+      }
     } catch (notificationError) {
       console.error(
         "Shipment status notification error:",
-        notificationError
+        notificationError,
       );
     }
 
@@ -647,7 +864,15 @@ const updateShipmentStatus = async (req, res) => {
         order_id: shipment.order_id,
         previous_status: currentStatus,
         shipment_status: normalizedStatus,
-        order_status: finalOrderStatus,
+        previous_order_status: oldOrderStatus,
+        order_status: newOrderStatus,
+        previous_payment_status: shipment.payment_status,
+        payment_status: newPaymentStatus,
+        payment_updated: paymentUpdated,
+        cash_received:
+          normalizedStatus === "delivered" && isCOD
+            ? cash_received
+            : null,
       },
     });
   } catch (error) {
@@ -657,7 +882,7 @@ const updateShipmentStatus = async (req, res) => {
       } catch (rollbackError) {
         console.error(
           "Shipment update rollback error:",
-          rollbackError
+          rollbackError,
         );
       }
     }
@@ -666,7 +891,8 @@ const updateShipmentStatus = async (req, res) => {
 
     return res.status(error.statusCode || 500).json({
       success: false,
-      message: error.message || "Failed to update shipment status",
+      message:
+        error.message || "Failed to update shipment status",
     });
   } finally {
     if (connection) {
@@ -693,7 +919,7 @@ const getOrderShipments = async (req, res) => {
        FROM orders
        WHERE id = ? AND user_id = ?
        LIMIT 1`,
-      [orderId, userId]
+      [orderId, userId],
     );
 
     if (orders.length === 0) {
@@ -714,7 +940,7 @@ const getOrderShipments = async (req, res) => {
          ON sm.id = s.shipping_method_id
        WHERE s.order_id = ?
        ORDER BY s.id DESC`,
-      [orderId]
+      [orderId],
     );
 
     const shipmentsWithHistory = [];
@@ -725,7 +951,7 @@ const getOrderShipments = async (req, res) => {
          FROM shipment_tracking
          WHERE shipment_id = ?
          ORDER BY tracked_at ASC, id ASC`,
-        [shipment.id]
+        [shipment.id],
       );
 
       shipmentsWithHistory.push({
@@ -783,7 +1009,7 @@ const getShipmentByTrackingNumber = async (req, res) => {
          AND o.user_id = ?
        ORDER BY s.id DESC
        LIMIT 1`,
-      [trackingNumber.trim(), userId]
+      [trackingNumber.trim(), userId],
     );
 
     if (shipments.length === 0) {
@@ -800,7 +1026,7 @@ const getShipmentByTrackingNumber = async (req, res) => {
        FROM shipment_tracking
        WHERE shipment_id = ?
        ORDER BY tracked_at ASC, id ASC`,
-      [shipment.id]
+      [shipment.id],
     );
 
     return res.status(200).json({

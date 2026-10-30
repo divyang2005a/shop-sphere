@@ -59,6 +59,7 @@ Prefix: `/api/products`
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/` | List products |
+| GET | `/:productId/images` | Get a product's images for the storefront |
 | GET | `/:productId` | Get product details, including its images |
 
 The product listing and detail routes do not declare authentication middleware in the route definitions.
@@ -132,6 +133,10 @@ order response includes `shipment_id` and `shipment_status`. Admins can add
 courier/tracking details and update its status through the shipment APIs.
 
 Payment gateway integration is outside the current project scope. Refund endpoints must be tested only with legitimate existing records and applicable business rules.
+Checkout returns active payment methods, including UPI and Card when enabled,
+and creates both the order and its payment record with `pending` status. This
+backend does not process UPI/Card transactions. Never send card credentials,
+UPI PINs, OTPs, client-supplied payment statuses, or transaction IDs.
 
 ## 10. Product Reviews
 
@@ -145,6 +150,16 @@ Prefix: `/api/reviews`
 | GET | `/admin` | Get reviews for administration; authentication and admin authorization required |
 | PATCH | `/admin/:reviewId/status` | Moderate a review; authentication and admin authorization required |
 
+### Site Reviews
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/site` | Submit a site review; authentication required; rating from 1 to 5 and optional review text |
+| GET | `/site` | List site reviews; public; optional pagination with `page` and `limit` |
+| DELETE | `/site/:reviewId` | Delete your own site review; authentication required |
+
+Site reviews are visible immediately after submission.
+
 ## 11. Notifications
 
 Prefix: `/api/notifications`
@@ -157,6 +172,23 @@ All listed endpoints require authentication.
 | GET | `/unread-count` | Get unread notification count |
 | PATCH | `/read-all` | Mark all notifications as read |
 | PATCH | `/:notificationId/read` | Mark one notification as read |
+
+### Admin Notification Campaigns
+
+Prefix: `/api/admin/notifications`
+
+All endpoints below require authentication and admin authorization.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/` | List notification campaigns with pagination (`page`, `limit`) |
+| POST | `/` | Create a draft campaign with `type`, `title`, `message`, and optional object `data` |
+| PUT | `/:notificationId` | Edit a draft or scheduled campaign; provide `type`, `title`, `message`, and optional `data` |
+| DELETE | `/:notificationId` | Delete a draft or scheduled campaign; published campaigns cannot be deleted |
+| POST | `/:notificationId/publish` | Publish now to all active users |
+| POST | `/:notificationId/schedule` | Schedule publication to all active users; body: `{ "scheduled_at": "2026-10-30T12:00:00Z" }` |
+
+Scheduled campaigns are published by the backend scheduler, which checks for due campaigns every 30 seconds. Notification recipients are individual rows in the existing customer notifications feed.
 
 ## 12. Shipments and Tracking
 
@@ -172,6 +204,15 @@ Prefix: `/api/shipments`
 | GET | `/tracking/:trackingNumber` | Get a shipment by tracking number; authentication required |
 
 Shipment tracking uses the application's shipment functionality. A live third-party courier integration should not be assumed.
+To mark a COD shipment as delivered, include `cash_received` as a JSON boolean:
+
+```json
+{ "status": "delivered", "cash_received": true }
+```
+
+Set `cash_received` to `false` if cash was not collected; the shipment is
+delivered but its payment remains pending. Do not send `"true"` or `"false"` as
+strings.
 
 ## Shipping Methods and Delivery Areas
 
@@ -263,6 +304,28 @@ All endpoints in this section require authentication and admin-role authorizatio
 | POST | `/products` | Create a product |
 | PUT | `/products/:product_id` | Update a product |
 | DELETE | `/products/:product_id` | Delete a product |
+
+### Reviews
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/reviews` | List all reviews; optional `?status=pending`, `approved`, `rejected` or `all`, and pagination with `page` and `limit` |
+| GET | `/site-reviews` | List all site reviews with pagination |
+| DELETE | `/reviews/:reviewId` | Delete a review and its associated image and report records |
+| DELETE | `/site-reviews/:reviewId` | Delete any site review |
+
+### Payments
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/payments` | List payment transactions with order and customer details; optional `status`, `page`, and `limit` filters |
+| PATCH | `/orders/:order_id/payment-status` | Manually confirm a pending payment after independently verifying receipt; empty request body required |
+
+Payment confirmation is an administrator action, not gateway verification.
+Only pending payments for supported methods and valid, non-cancelled order
+states can be confirmed. COD can be confirmed here only after delivery and
+independent cash-receipt verification; the shipment `cash_received` flow remains
+the normal COD confirmation path.
 
 ### Product Images
 

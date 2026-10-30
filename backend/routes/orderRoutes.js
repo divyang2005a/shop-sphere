@@ -16,6 +16,7 @@ const {
 } = require("../controllers/reorderController");
 
 const authMiddleware = require("../middleware/authMiddleware");
+const rejectPaymentCredentials = require("../middleware/rejectPaymentCredentials");
 
 const {
   getOrderInvoice,
@@ -34,7 +35,7 @@ const {
 } = require("../controllers/refundController");
 
 // Create order
-router.post("/", authMiddleware, createOrder);
+router.post("/", authMiddleware, rejectPaymentCredentials, createOrder);
 
 // Get all orders
 router.get("/", authMiddleware, getOrders);

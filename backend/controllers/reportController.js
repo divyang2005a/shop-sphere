@@ -40,7 +40,10 @@ const getDateFilters = (query, column = "created_at") => {
   };
 };
 
+// --------------------------------------------------
 // 1. ADMIN DASHBOARD SUMMARY
+// --------------------------------------------------
+
 const getDashboard = async (req, res) => {
   try {
     const [
@@ -51,52 +54,95 @@ const getDashboard = async (req, res) => {
       [lowStockProducts],
       [recentOrders],
     ] = await Promise.all([
+      // User statistics
       db.promise().query(`
         SELECT
           COUNT(*) AS total_users,
-          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_users
+          SUM(
+            CASE
+              WHEN status = 'active' THEN 1
+              ELSE 0
+            END
+          ) AS active_users
         FROM users
       `),
 
+      // Product statistics
       db.promise().query(`
         SELECT
           COUNT(*) AS total_products,
-          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_products,
+          SUM(
+            CASE
+              WHEN status = 'active' THEN 1
+              ELSE 0
+            END
+          ) AS active_products,
           SUM(
             CASE
               WHEN COALESCE(stock_quantity, 0)
                    <= COALESCE(low_stock_threshold, 0)
-              THEN 1 ELSE 0
+              THEN 1
+              ELSE 0
             END
           ) AS low_stock_products
         FROM products
       `),
 
+      // Order statistics
       db.promise().query(`
         SELECT
           COUNT(*) AS total_orders,
-          SUM(CASE WHEN order_status = 'pending' THEN 1 ELSE 0 END)
-            AS pending_orders,
-          SUM(CASE WHEN order_status = 'processing' THEN 1 ELSE 0 END)
-            AS processing_orders,
-          SUM(CASE WHEN order_status = 'shipped' THEN 1 ELSE 0 END)
-            AS shipped_orders,
-          SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END)
-            AS delivered_orders,
-          SUM(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END)
-            AS cancelled_orders,
+
+          SUM(
+            CASE
+              WHEN order_status = 'pending' THEN 1
+              ELSE 0
+            END
+          ) AS pending_orders,
+
+          SUM(
+            CASE
+              WHEN order_status = 'processing' THEN 1
+              ELSE 0
+            END
+          ) AS processing_orders,
+
+          SUM(
+            CASE
+              WHEN order_status = 'shipped' THEN 1
+              ELSE 0
+            END
+          ) AS shipped_orders,
+
+          SUM(
+            CASE
+              WHEN order_status = 'delivered' THEN 1
+              ELSE 0
+            END
+          ) AS delivered_orders,
+
+          SUM(
+            CASE
+              WHEN order_status = 'cancelled' THEN 1
+              ELSE 0
+            END
+          ) AS cancelled_orders,
+
           COALESCE(
             SUM(
               CASE
                 WHEN order_status <> 'cancelled'
-                THEN total_amount ELSE 0
+                THEN total_amount
+                ELSE 0
               END
             ),
             0
           ) AS non_cancelled_order_value
+
         FROM orders
       `),
 
+      // Payment statistics
       db.promise().query(`
         SELECT
           COUNT(*) AS paid_orders,
@@ -106,6 +152,7 @@ const getDashboard = async (req, res) => {
           AND order_status <> 'cancelled'
       `),
 
+      // Low stock products
       db.promise().query(`
         SELECT
           id,
@@ -121,16 +168,20 @@ const getDashboard = async (req, res) => {
         LIMIT 10
       `),
 
+      // Recent orders WITH CUSTOMER NAME
       db.promise().query(`
         SELECT
-          id,
-          order_number,
-          order_status,
-          payment_status,
-          total_amount,
-          created_at
-        FROM orders
-        ORDER BY created_at DESC
+          o.id,
+          o.order_number,
+          o.order_status,
+          o.payment_status,
+          o.total_amount,
+          o.created_at,
+          u.name AS customer_name
+        FROM orders o
+        LEFT JOIN users u
+          ON u.id = o.user_id
+        ORDER BY o.created_at DESC
         LIMIT 10
       `),
     ]);
@@ -156,7 +207,10 @@ const getDashboard = async (req, res) => {
   }
 };
 
+// --------------------------------------------------
 // 2. SALES REPORT
+// --------------------------------------------------
+
 const getSalesReport = async (req, res) => {
   try {
     const filters = getDateFilters(req.query, "created_at");
@@ -175,25 +229,41 @@ const getSalesReport = async (req, res) => {
       `
       SELECT
         COUNT(*) AS total_orders,
-        COALESCE(SUM(total_amount), 0) AS total_order_value,
+
+        COALESCE(
+          SUM(total_amount),
+          0
+        ) AS total_order_value,
+
         SUM(
-          CASE WHEN payment_status = 'paid'
-          THEN 1 ELSE 0 END
+          CASE
+            WHEN payment_status = 'paid' THEN 1
+            ELSE 0
+          END
         ) AS paid_orders,
+
         COALESCE(
           SUM(
-            CASE WHEN payment_status = 'paid'
-            THEN total_amount ELSE 0 END
+            CASE
+              WHEN payment_status = 'paid'
+              THEN total_amount
+              ELSE 0
+            END
           ),
           0
         ) AS paid_revenue,
+
         COALESCE(
           SUM(
-            CASE WHEN payment_status = 'pending'
-            THEN total_amount ELSE 0 END
+            CASE
+              WHEN payment_status = 'pending'
+              THEN total_amount
+              ELSE 0
+            END
           ),
           0
         ) AS pending_payment_value
+
       FROM orders
       WHERE order_status <> 'cancelled'
       ${where}
@@ -206,14 +276,23 @@ const getSalesReport = async (req, res) => {
       SELECT
         DATE(created_at) AS sale_date,
         COUNT(*) AS total_orders,
-        COALESCE(SUM(total_amount), 0) AS total_order_value,
+
+        COALESCE(
+          SUM(total_amount),
+          0
+        ) AS total_order_value,
+
         COALESCE(
           SUM(
-            CASE WHEN payment_status = 'paid'
-            THEN total_amount ELSE 0 END
+            CASE
+              WHEN payment_status = 'paid'
+              THEN total_amount
+              ELSE 0
+            END
           ),
           0
         ) AS paid_revenue
+
       FROM orders
       WHERE order_status <> 'cancelled'
       ${where}
@@ -225,10 +304,12 @@ const getSalesReport = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+
       filters: {
         start_date: req.query.start_date || null,
         end_date: req.query.end_date || null,
       },
+
       data: {
         summary: summary[0],
         daily_sales: dailySales,
@@ -244,7 +325,10 @@ const getSalesReport = async (req, res) => {
   }
 };
 
+// --------------------------------------------------
 // 3. ORDER STATUS REPORT
+// --------------------------------------------------
+
 const getOrdersReport = async (req, res) => {
   try {
     const filters = getDateFilters(req.query, "created_at");
@@ -288,6 +372,7 @@ const getOrdersReport = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+
       data: {
         by_order_status: statusReport,
         by_payment_status: paymentReport,
@@ -303,26 +388,38 @@ const getOrdersReport = async (req, res) => {
   }
 };
 
+// --------------------------------------------------
 // 4. PRODUCT AND INVENTORY STOCK REPORT
+// --------------------------------------------------
+
 const getProductsReport = async (req, res) => {
   try {
     const [summary] = await db.promise().query(`
       SELECT
         COUNT(*) AS total_products,
-        COALESCE(SUM(stock_quantity), 0) AS total_stock_units,
+
+        COALESCE(
+          SUM(stock_quantity),
+          0
+        ) AS total_stock_units,
+
         SUM(
           CASE
             WHEN COALESCE(stock_quantity, 0) = 0
-            THEN 1 ELSE 0
+            THEN 1
+            ELSE 0
           END
         ) AS out_of_stock_products,
+
         SUM(
           CASE
             WHEN COALESCE(stock_quantity, 0)
                  <= COALESCE(low_stock_threshold, 0)
-            THEN 1 ELSE 0
+            THEN 1
+            ELSE 0
           END
         ) AS low_stock_products
+
       FROM products
     `);
 
@@ -340,22 +437,28 @@ const getProductsReport = async (req, res) => {
         p.stock_status,
         p.status,
         COALESCE(sold.total_sold, 0) AS total_sold
+
       FROM products p
+
       LEFT JOIN (
         SELECT
           oi.product_id,
           SUM(oi.quantity) AS total_sold
         FROM order_items oi
-        INNER JOIN orders o ON o.id = oi.order_id
+        INNER JOIN orders o
+          ON o.id = oi.order_id
         WHERE o.order_status <> 'cancelled'
         GROUP BY oi.product_id
-      ) sold ON sold.product_id = p.id
+      ) sold
+        ON sold.product_id = p.id
+
       ORDER BY p.stock_quantity ASC, p.title ASC
       LIMIT 100
     `);
 
     return res.status(200).json({
       success: true,
+
       data: {
         summary: summary[0],
         products,
@@ -372,7 +475,10 @@ const getProductsReport = async (req, res) => {
   }
 };
 
+// --------------------------------------------------
 // 5. INVENTORY MOVEMENT REPORT
+// --------------------------------------------------
+
 const getInventoryReport = async (req, res) => {
   try {
     const filters = getDateFilters(req.query, "im.created_at");
@@ -395,7 +501,10 @@ const getInventoryReport = async (req, res) => {
     if (req.query.product_id !== undefined) {
       const productId = String(req.query.product_id);
 
-      if (!/^\d+$/.test(productId) || Number(productId) <= 0) {
+      if (
+        !/^\d+$/.test(productId) ||
+        Number(productId) <= 0
+      ) {
         return res.status(400).json({
           success: false,
           message: "product_id must be a positive integer",
@@ -414,14 +523,29 @@ const getInventoryReport = async (req, res) => {
       `
       SELECT
         COUNT(*) AS total_movements,
+
         COALESCE(
-          SUM(CASE WHEN im.quantity > 0 THEN im.quantity ELSE 0 END),
+          SUM(
+            CASE
+              WHEN im.quantity > 0
+              THEN im.quantity
+              ELSE 0
+            END
+          ),
           0
         ) AS positive_quantity_total,
+
         COALESCE(
-          SUM(CASE WHEN im.quantity < 0 THEN ABS(im.quantity) ELSE 0 END),
+          SUM(
+            CASE
+              WHEN im.quantity < 0
+              THEN ABS(im.quantity)
+              ELSE 0
+            END
+          ),
           0
         ) AS negative_quantity_total
+
       FROM inventory_movements im
       WHERE 1 = 1
       ${filters.where}
@@ -445,11 +569,16 @@ const getInventoryReport = async (req, res) => {
         im.note,
         im.created_by,
         im.created_at
+
       FROM inventory_movements im
-      LEFT JOIN products p ON p.id = im.product_id
+
+      LEFT JOIN products p
+        ON p.id = im.product_id
+
       WHERE 1 = 1
       ${filters.where}
       ${extraWhere}
+
       ORDER BY im.created_at DESC
       LIMIT 100
       `,
@@ -458,12 +587,14 @@ const getInventoryReport = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+
       filters: {
         start_date: req.query.start_date || null,
         end_date: req.query.end_date || null,
         type: req.query.type || null,
         product_id: req.query.product_id || null,
       },
+
       data: {
         summary: summary[0],
         movements,
@@ -479,6 +610,10 @@ const getInventoryReport = async (req, res) => {
     });
   }
 };
+
+// --------------------------------------------------
+// EXPORT CONTROLLERS
+// --------------------------------------------------
 
 module.exports = {
   getDashboard,
