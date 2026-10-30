@@ -12,6 +12,7 @@ const adminMiddleware = require("../middleware/adminMiddleware");
 const uploadProductImage = require("../middleware/uploadMiddleware");
 const uploadCategory = require("../middleware/categoryUpload");
 const uploadBrand = require("../middleware/brandUpload");
+const uploadBanner = require("../middleware/bannerUpload");
 
 // Admin catalog controllers
 const {
@@ -109,6 +110,21 @@ const {
 } = require("../controllers/paymentMethodController");
 const { getAdminPayments } = require("../controllers/adminPaymentController");
 const {
+  getBanners,
+  createBanner,
+  updateBanner,
+  deleteBanner,
+  getSettings,
+  createSetting,
+  updateSetting,
+  deleteSetting,
+} = require("../controllers/adminContentController");
+const {
+  getRoles,
+  getUserRoles,
+} = require("../controllers/adminRoleController");
+const { getAdminActivityLogs } = require("../controllers/adminAuditController");
+const {
   getAdminNotifications,
   createAdminNotification,
   updateAdminNotification,
@@ -152,6 +168,15 @@ router.get(
 // =====================================================
 
 router.get("/users", authMiddleware, adminMiddleware, getUsers);
+
+router.get("/roles", authMiddleware, adminMiddleware, getRoles);
+
+router.get(
+  "/users/:id/roles",
+  authMiddleware,
+  adminMiddleware,
+  getUserRoles,
+);
 
 router.get(
   "/users/:id",
@@ -686,6 +711,60 @@ router.post(
   authMiddleware,
   adminMiddleware,
   scheduleAdminNotification,
+);
+
+// =====================================================
+// CONTENT MANAGEMENT
+// =====================================================
+
+router.get("/banners", authMiddleware, adminMiddleware, getBanners);
+
+router.post(
+  "/banners",
+  authMiddleware,
+  adminMiddleware,
+  uploadBanner.single("image"),
+  createBanner,
+);
+
+router.put(
+  "/banners/:id",
+  authMiddleware,
+  adminMiddleware,
+  uploadBanner.single("image"),
+  updateBanner,
+);
+
+router.delete(
+  "/banners/:id",
+  authMiddleware,
+  adminMiddleware,
+  deleteBanner,
+);
+
+router.get("/settings", authMiddleware, adminMiddleware, getSettings);
+
+router.post("/settings", authMiddleware, adminMiddleware, createSetting);
+
+router.put(
+  "/settings/:id",
+  authMiddleware,
+  adminMiddleware,
+  updateSetting,
+);
+
+router.delete(
+  "/settings/:id",
+  authMiddleware,
+  adminMiddleware,
+  deleteSetting,
+);
+
+router.get(
+  "/activity-logs",
+  authMiddleware,
+  adminMiddleware,
+  getAdminActivityLogs,
 );
 
 module.exports = router;

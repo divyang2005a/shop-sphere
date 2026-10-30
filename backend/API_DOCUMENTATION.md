@@ -295,6 +295,29 @@ All endpoints in this section require authentication and admin-role authorizatio
 | GET | `/dashboard` | Get admin dashboard status |
 | GET | `/users` | List users |
 | PUT | `/users/:id/status` | Update a user's status |
+| GET | `/roles` | List available roles; read-only |
+| GET | `/users/:id/roles` | View a user's assigned roles; read-only |
+| GET | `/activity-logs` | List admin audit logs with optional `page`, `limit`, `admin_id`, `entity_type`, `action`, `from`, and `to` filters |
+
+Roles are exposed for viewing only; no role assignment or role mutation
+endpoints are provided.
+
+### Content Management
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/banners` | List all banners |
+| POST | `/banners` | Create a banner; JSON `image` URL/path or multipart file field `image` |
+| PUT | `/banners/:id` | Update banner fields; optionally replace multipart `image` |
+| DELETE | `/banners/:id` | Delete a banner |
+| GET | `/settings` | List application settings |
+| POST | `/settings` | Create a setting with `key`, optional string/null `value`, `type`, and `description` |
+| PUT | `/settings/:id` | Update setting fields |
+| DELETE | `/settings/:id` | Delete a setting |
+
+Public active banners are available from `GET /api/banners`; inactive or
+out-of-date banners are excluded. Banner file uploads accept JPG, PNG, WEBP,
+and GIF images up to 5 MB.
 
 ### Products
 
