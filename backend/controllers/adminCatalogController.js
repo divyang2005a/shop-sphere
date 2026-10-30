@@ -62,7 +62,13 @@ const getUsers = (req, res) => {
       date_of_birth,
       status,
       created_at,
-      updated_at
+      updated_at,
+      (
+        SELECT GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ',')
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = users.id
+      ) AS role_names
     FROM users
     ORDER BY id DESC
   `;
@@ -74,7 +80,10 @@ const getUsers = (req, res) => {
 
     return res.status(200).json({
       success: true,
-      users,
+      users: users.map(({ role_names: roleNames, ...user }) => ({
+        ...user,
+        roles: roleNames ? roleNames.split(",") : [],
+      })),
     });
   });
 };

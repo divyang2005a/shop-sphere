@@ -8,6 +8,19 @@ require.cache[dbPath] = {
   filename: dbPath,
   loaded: true,
   exports: {
+    query: (sql, params, callback) => {
+      if (typeof params === "function") {
+        callback = params;
+      }
+      if (sql.includes("FROM users") && sql.includes("role_names")) {
+        callback(null, [
+          { id: 5, name: "Customer", role_names: "admin,user" },
+          { id: 6, name: "New user", role_names: null },
+        ]);
+        return;
+      }
+      callback(new Error(`Unexpected callback query in test: ${sql}`));
+    },
     promise: () => ({
       execute: async (sql, params = []) => {
         calls.push({ sql, params });
@@ -53,6 +66,7 @@ require.cache[dbPath] = {
 const content = require("../controllers/adminContentController");
 const audit = require("../controllers/adminAuditController");
 const roles = require("../controllers/adminRoleController");
+const { getUsers } = require("../controllers/adminCatalogController");
 
 const makeResponse = () => ({
   statusCode: 200,
@@ -181,4 +195,12 @@ test("roles and assigned user roles are read-only views", async () => {
     routeSource,
     /router\.post\(\s*"\/banners",\s*authMiddleware,\s*adminMiddleware,\s*uploadBanner\.single\("image"\),\s*createBanner/s,
   );
+});
+
+test("admin users list includes assigned roles and empty list for unassigned users", async () => {
+  const res = makeResponse();
+  getUsers({}, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.users[0].roles, ["admin", "user"]);
+  assert.deepEqual(res.body.users[1].roles, []);
 });

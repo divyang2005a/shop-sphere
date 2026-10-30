@@ -293,7 +293,7 @@ All endpoints in this section require authentication and admin-role authorizatio
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/dashboard` | Get admin dashboard status |
-| GET | `/users` | List users |
+| GET | `/users` | List users with their assigned role names in the `roles` array |
 | PUT | `/users/:id/status` | Update a user's status |
 | GET | `/roles` | List available roles; read-only |
 | GET | `/users/:id/roles` | View a user's assigned roles; read-only |
