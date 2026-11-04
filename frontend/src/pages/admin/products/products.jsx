@@ -1,9 +1,9 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-const API_URL = "http://192.168.1.10:5000/api/admin/products";
-const IMAGE_API_URL = "http://192.168.1.10:5000/api/admin/products";
-const SERVER_URL = "http://192.168.1.10:5000";
+const API_URL = "http://localhost:5000/api/admin/products";
+const IMAGE_API_URL = "http://localhost:5000/api/admin/products";
+const SERVER_URL = "http://localhost:5000";
 
 // Product Image Component
 const ProductImage = ({ productId, title }) => {

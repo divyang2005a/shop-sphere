@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
-const API = "http://192.168.1.10:5000/api/admin";
-const SERVER_URL = "http://192.168.1.10:5000";
+const API = "http://localhost:5000/api/admin";
+const SERVER_URL = "http://localhost:5000";
 
 function Inventory() {
   const [products, setProducts] = useState([]);

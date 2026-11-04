@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 
-const API_BASE_URL = "http://192.168.1.10:5000/api";
+const API_BASE_URL = "http://localhost:5000/api";
 const ORDERS_API = `${API_BASE_URL}/admin/orders`;
 
 const ORDER_STATUSES = [

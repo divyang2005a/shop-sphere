@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Notifications from "../pages/user/Notifications";
 
 const UNREAD_COUNT_URL =
-    "http://192.168.1.10:5000/api/notifications/unread-count";
+    "http://localhost:5000/api/notifications/unread-count";
 
 function UserDashboardNavbar({ onMenuClick }) {
     const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -117,7 +117,7 @@ function UserDashboardNavbar({ onMenuClick }) {
             const token = localStorage.getItem("shopsphereToken");
 
             const response = await fetch(
-                "http://192.168.1.10:5000/api/auth/logout",
+                "http://localhost:5000/api/auth/logout",
                 {
                     method: "POST",
                     headers: {

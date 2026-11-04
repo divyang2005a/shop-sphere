@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
 
-const API_URL = "http://192.168.1.10:5000/api/support";
+const API_URL = "http://localhost:5000/api/support";
 
 const STATUS_OPTIONS = [
     { value: "open", label: "Open" },

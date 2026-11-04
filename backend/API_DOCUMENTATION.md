@@ -317,7 +317,8 @@ endpoints are provided.
 
 Public active banners are available from `GET /api/banners`; inactive or
 out-of-date banners are excluded. Banner file uploads accept JPG, PNG, WEBP,
-and GIF images up to 5 MB.
+and GIF images up to 5 MB. The homepage hero slider consumes this endpoint in
+`sort_order` order and uses each banner's `title`, `image`, and optional `link`.
 
 ### Products
 

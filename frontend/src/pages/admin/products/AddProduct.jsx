@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const BASE_URL = "http://192.168.1.10:5000";
+const BASE_URL = "http://localhost:5000";
 const API_URL = `${BASE_URL}/api/admin/products`;
 const CATEGORY_URL = `${BASE_URL}/api/admin/categories`;
 const BRAND_URL = `${BASE_URL}/api/admin/brands`;

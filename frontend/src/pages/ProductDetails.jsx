@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 
-const API_BASE_URL = "http://192.168.1.10:5000";
+const API_BASE_URL = "http://localhost:5000";
 const API_URL = `${API_BASE_URL}/api`;
 
 const FALLBACK_IMAGE =

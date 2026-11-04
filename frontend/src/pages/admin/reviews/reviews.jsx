@@ -5,7 +5,7 @@ import React, {
     useState,
 } from "react";
 
-const API_BASE_URL = "http://192.168.1.10:5000/api";
+const API_BASE_URL = "http://localhost:5000/api";
 const PRODUCT_REVIEW_LIMIT = 6;
 const SITE_REVIEW_LIMIT = 6;
 

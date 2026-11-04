@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = "http://192.168.1.10:5000/api";
+const API_URL = "http://localhost:5000/api";
 
 function HappyCustomers() {
     const navigate = useNavigate();

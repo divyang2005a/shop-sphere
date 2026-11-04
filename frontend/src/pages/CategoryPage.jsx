@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 
-const API_BASE_URL = "http://192.168.1.10:5000";
+const API_BASE_URL = "http://localhost:5000";
 
 // Frontend category slug -> Backend category
 const categoryMap = {

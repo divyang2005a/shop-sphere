@@ -1,41 +1,109 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+
+const API_URL = "http://localhost:5000/api";
+const SERVER_URL = API_URL.replace(/\/api$/, "");
+
+const DEFAULT_SLIDES = [
+    {
+        id: 1,
+        title: "Discover the Latest Deals",
+        highlight: "Up to 50% Off!",
+        description:
+            "Explore amazing products, exclusive offers and exciting deals all in one place.",
+        button: "Shop Now",
+        image:
+            "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1600&q=85",
+        link: "/products",
+    },
+    {
+        id: 2,
+        title: "Fresh Styles for Every Day",
+        highlight: "New Collection",
+        description:
+            "Discover the latest fashion, accessories and trending styles for everyone.",
+        button: "Explore Collection",
+        image:
+            "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1600&q=85",
+        link: "/products",
+    },
+    {
+        id: 3,
+        title: "Upgrade Your Lifestyle",
+        highlight: "Special Offers",
+        description:
+            "Find electronics, home essentials and smart products at amazing prices.",
+        button: "View Deals",
+        image:
+            "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=1600&q=85",
+        link: "/products",
+    },
+];
 
 function HeroSlider() {
-    const slides = [
-        {
-            id: 1,
-            title: "Discover the Latest Deals",
-            highlight: "Up to 50% Off!",
-            description:
-                "Explore amazing products, exclusive offers and exciting deals all in one place.",
-            button: "Shop Now",
-            image:
-                "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1600&q=85",
-        },
-        {
-            id: 2,
-            title: "Fresh Styles for Every Day",
-            highlight: "New Collection",
-            description:
-                "Discover the latest fashion, accessories and trending styles for everyone.",
-            button: "Explore Collection",
-            image:
-                "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1600&q=85",
-        },
-        {
-            id: 3,
-            title: "Upgrade Your Lifestyle",
-            highlight: "Special Offers",
-            description:
-                "Find electronics, home essentials and smart products at amazing prices.",
-            button: "View Deals",
-            image:
-                "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=1600&q=85",
-        },
-    ];
-
+    const [slides, setSlides] = useState(DEFAULT_SLIDES);
     const [currentSlide, setCurrentSlide] = useState(0);
+
+    useEffect(() => {
+        const fetchBanners = async () => {
+            try {
+                const response = await fetch(`${API_URL}/banners`);
+                const result = await response.json();
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(
+                        result.message || "Unable to load hero banners."
+                    );
+                }
+
+                if (!Array.isArray(result.banners)) {
+                    throw new Error("Hero banner response is invalid.");
+                }
+
+                const activeSlides = result.banners
+                    .filter(
+                        (banner) =>
+                            typeof banner.title === "string" &&
+                            typeof banner.image === "string" &&
+                            banner.title.trim() &&
+                            banner.image.trim()
+                    )
+                    .map((banner) => {
+                        const image = banner.image.trim();
+                        const link =
+                            typeof banner.link === "string"
+                                ? banner.link.trim()
+                                : "";
+                        const safeLink =
+                            /^https?:\/\//i.test(link) ||
+                            (link.startsWith("/") && !link.startsWith("//"))
+                                ? link
+                                : "/products";
+
+                        return {
+                            id: banner.id,
+                            title: banner.title.trim(),
+                            highlight: "Featured Offer",
+                            description:
+                                "Discover great products and special offers at ShopSphere.",
+                            button: "Shop Now",
+                            image: /^https?:\/\//i.test(image)
+                                ? image
+                                : `${SERVER_URL}/${image.replace(/^\/+/, "")}`,
+                            link: safeLink,
+                        };
+                    });
+
+                if (activeSlides.length > 0) {
+                    setSlides(activeSlides);
+                    setCurrentSlide(0);
+                }
+            } catch (error) {
+                console.error("Failed to load hero banners:", error);
+            }
+        };
+
+        fetchBanners();
+    }, []);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -102,8 +170,8 @@ function HeroSlider() {
                                     {slide.description}
                                 </p>
 
-                                <Link
-                                    to="/products"
+                                <a
+                                    href={slide.link}
                                     className="mt-5 inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-surf-crest px-4 py-3 text-xs font-bold text-cyprus transition duration-300 hover:bg-white hover:shadow-lg min-[400px]:px-5 min-[400px]:text-sm sm:mt-6 sm:px-7"
                                 >
                                     <span className="truncate">
@@ -111,7 +179,7 @@ function HeroSlider() {
                                     </span>
 
                                     <i className="fa-solid fa-angle-right shrink-0"></i>
-                                </Link>
+                                </a>
                             </div>
                         </div>
                     </div>

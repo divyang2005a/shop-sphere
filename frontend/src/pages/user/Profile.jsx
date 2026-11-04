@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
 
-const API_URL = "http://192.168.1.10:5000/api/auth/profile";
-const SERVER_URL = "http://192.168.1.10:5000";
+const API_URL = "http://localhost:5000/api/auth/profile";
+const SERVER_URL = "http://localhost:5000";
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const TODAY_YYYY_MM_DD = new Date().toISOString().slice(0, 10);
 

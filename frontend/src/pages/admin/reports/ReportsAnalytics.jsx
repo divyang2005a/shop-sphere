@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-const API_BASE_URL = "http://192.168.1.10:5000/api/admin";
+const API_BASE_URL = "http://localhost:5000/api/admin";
 const ITEMS_PER_PAGE = 5;
 
 const statusStyles = {
