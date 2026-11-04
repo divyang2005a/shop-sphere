@@ -58,20 +58,37 @@ function UserDashboard() {
 
     // Get product image URL
     const getImageUrl = (product) => {
-        const image =
+        let image =
+            product?.main_image ||
+            product?.primary_image ||
             product?.image_url ||
             product?.image ||
-            product?.images?.[0]?.image_url ||
-            product?.images?.[0]?.url ||
-            "";
+            product?.imageUrl ||
+            product?.thumbnail ||
+            product?.product_image ||
+            product?.images?.[0];
 
-        if (!image) return "";
-
-        if (image.startsWith("http://") || image.startsWith("https://")) {
-            return image;
+        if (image && typeof image === "object") {
+            image =
+                image.image_url ||
+                image.imageUrl ||
+                image.url ||
+                image.image ||
+                image.path ||
+                image.file_path;
         }
 
-        return `${SERVER_URL}${image.startsWith("/") ? "" : "/"}${image}`;
+        if (typeof image !== "string" || !image.trim()) {
+            return "";
+        }
+
+        const imagePath = image.trim();
+
+        if (/^(https?:\/\/|data:|blob:)/i.test(imagePath)) {
+            return imagePath;
+        }
+
+        return `${SERVER_URL}/${imagePath.replace(/^\/+/, "")}`;
     };
 
     // Load dashboard APIs
@@ -100,7 +117,7 @@ function UserDashboard() {
                     `${API_BASE_URL}/orders`,
                     `${API_BASE_URL}/cart`,
                     `${API_BASE_URL}/wishlist`,
-                    `${API_BASE_URL}/products`,
+                    `${API_BASE_URL}/products/recommended?limit=4`,
                 ];
 
                 const responses = await Promise.all(
@@ -131,7 +148,7 @@ function UserDashboard() {
                     ordersData,
                     cartData,
                     wishlistData,
-                    productsData,
+                    recommendedData,
                 ] = responseData;
 
                 if (!isMounted) return;
@@ -167,10 +184,10 @@ function UserDashboard() {
                         : []
                 );
 
-                // Products API: { success: true, products: [...] }
+                // Recommended products API: { success: true, products: [...] }
                 setProducts(
-                    Array.isArray(productsData.products)
-                        ? productsData.products
+                    Array.isArray(recommendedData.products)
+                        ? recommendedData.products
                         : []
                 );
 

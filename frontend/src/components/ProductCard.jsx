@@ -40,20 +40,31 @@ function ProductCard({ product }) {
 
     // Product image
     const getImage = () => {
-        const image =
+        let image =
             product?.image ||
             product?.image_url ||
+            product?.imageUrl ||
+            product?.main_image ||
+            product?.primary_image ||
             product?.thumbnail ||
             product?.product_image ||
-            product?.images?.[0]?.image_url ||
-            product?.images?.[0]?.image ||
-            (typeof product?.images?.[0] === "string"
-                ? product.images[0]
-                : "");
+            product?.images?.[0];
 
-        if (!image) {
+        if (image && typeof image === "object") {
+            image =
+                image.image_url ||
+                image.imageUrl ||
+                image.image ||
+                image.url ||
+                image.path ||
+                image.file_path;
+        }
+
+        if (typeof image !== "string" || !image.trim()) {
             return "https://placehold.co/400x400?text=Product";
         }
+
+        image = image.trim();
 
         if (
             image.startsWith("http://") ||
