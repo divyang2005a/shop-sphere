@@ -249,6 +249,7 @@ const getProducts = (req, res) => {
         p.product_code,
         p.title,
         p.slug,
+        p.short_description,
         p.base_price,
         COALESCE(
           (SELECT fs.sale_price FROM flash_sales AS fs
@@ -344,9 +345,13 @@ const getProductDetails = (req, res) => {
       p.status,
       p.meta_title,
       p.meta_description,
+      c.name AS category_name,
+      b.name AS brand_name,
       p.created_at,
       p.updated_at
     FROM products AS p
+    LEFT JOIN categories AS c ON c.id = p.category_id
+    LEFT JOIN brands AS b ON b.id = p.brand_id
     WHERE p.id = ?
     LIMIT 1
   `;

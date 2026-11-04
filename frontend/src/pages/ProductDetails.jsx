@@ -80,7 +80,9 @@ const normalizeDescription = (value) => {
 
 const getDescription = (p) =>
   normalizeDescription(
-    p?.description ??
+    p?.full_description ??
+      p?.fullDescription ??
+      p?.description ??
       p?.long_description ??
       p?.short_description ??
       p?.product_description
