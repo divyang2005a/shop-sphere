@@ -1,284 +1,488 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+const API_BASE_URL = "http://192.168.1.20:5000";
 
 function LimitedTimeDeal() {
-const [products, setProducts] = useState([]);
-const [now, setNow] = useState(Date.now());
+    const navigate = useNavigate();
 
-const sliderRef = useRef(null);
+    const [products, setProducts] = useState([]);
+    const [now, setNow] = useState(Date.now());
 
-// Fetch Flash Sales API
-useEffect(() => {
-    const controller = new AbortController();
+    // Wishlist states
+    const [wishlistItems, setWishlistItems] = useState({});
+    const [wishlistLoading, setWishlistLoading] = useState({});
 
-    const fetchFlashSales = async () => {
-        try {
-            const response = await fetch(
-                "http://192.168.1.20:5000/api/flash-sales",
-                { signal: controller.signal }
-            );
+    const sliderRef = useRef(null);
 
-            const result = await response.json();
+    // Get authentication token
+    const getToken = () => {
+        return localStorage.getItem("shopsphereToken");
+    };
 
-            if (!response.ok || !result.success) {
-                throw new Error(
-                    result.message || "Unable to load flash sales."
+    // Fetch Flash Sales API
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const fetchFlashSales = async () => {
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/flash-sales`,
+                    {
+                        signal: controller.signal,
+                    }
                 );
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(
+                        result.message || "Unable to load flash sales."
+                    );
+                }
+
+                if (!Array.isArray(result.flash_sales)) {
+                    throw new Error("Flash sales response is invalid.");
+                }
+
+                setNow(Date.now());
+
+                setProducts(
+                    result.flash_sales.map((sale) => ({
+                        id: sale.product_id,
+                        title: sale.product_title,
+                        description:
+                            sale.short_description ||
+                            "Limited-time offer while stocks last.",
+                        price: Number(sale.sale_price),
+                        oldPrice: Number(sale.original_price),
+                        discount: `${Math.round(
+                            Number(sale.discount_percentage)
+                        )}% OFF`,
+                        image: sale.image
+                            ? /^https?:\/\//i.test(sale.image)
+                                ? sale.image
+                                : `${API_BASE_URL}/${sale.image.replace(
+                                      /^\/+/,
+                                      ""
+                                  )}`
+                            : "https://placehold.co/500x500?text=Product",
+                        endTime: new Date(sale.end_time).getTime(),
+                    }))
+                );
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    console.error("Failed to load flash sales:", error);
+                }
             }
+        };
 
-            if (!Array.isArray(result.flash_sales)) {
-                throw new Error("Flash sales response is invalid.");
+        fetchFlashSales();
+
+        const refreshTimer = setInterval(fetchFlashSales, 30000);
+
+        return () => {
+            controller.abort();
+            clearInterval(refreshTimer);
+        };
+    }, []);
+
+    // Fetch Wishlist from Backend
+    useEffect(() => {
+        const fetchWishlist = async () => {
+            const token = getToken();
+
+            if (!token) return;
+
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/wishlist`,
+                    {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(
+                        result.message || "Unable to load wishlist."
+                    );
+                }
+
+                const items =
+                    result.data?.items ||
+                    result.items ||
+                    [];
+
+                const wishlistMap = {};
+
+                items.forEach((item) => {
+                    const productId =
+                        item.product_id ??
+                        item.product?.product_id ??
+                        item.product?.id;
+
+                    const wishlistItemId =
+                        item.wishlist_item_id ?? item.id;
+
+                    if (productId && wishlistItemId) {
+                        wishlistMap[String(productId)] = wishlistItemId;
+                    }
+                });
+
+                setWishlistItems(wishlistMap);
+            } catch (error) {
+                console.error("Fetch wishlist error:", error);
             }
+        };
 
-            const serverUrl = "http://192.168.1.20:5000";
+        fetchWishlist();
+    }, []);
 
-            setNow(Date.now());
+    // Add / Remove Wishlist
+    const handleWishlist = async (product) => {
+        const token = getToken();
 
-            setProducts(
-                result.flash_sales.map((sale) => ({
-                    id: sale.product_id,
-                    title: sale.product_title,
-                    description:
-                        sale.short_description ||
-                        "Limited-time offer while stocks last.",
-                    price: Number(sale.sale_price),
-                    oldPrice: Number(sale.original_price),
-                    discount: `${Math.round(
-                        Number(sale.discount_percentage)
-                    )}% OFF`,
-                    image: sale.image
-                        ? /^https?:\/\//i.test(sale.image)
-                            ? sale.image
-                            : `${serverUrl}/${sale.image.replace(/^\/+/, "")}`
-                        : "https://placehold.co/500x500?text=Product",
-                    endTime: new Date(sale.end_time).getTime(),
-                }))
-            );
+        // Login check
+        if (!token) {
+            navigate("/login");
+            return;
+        }
+
+        const productId = Number(product.id);
+
+        if (!Number.isInteger(productId) || productId <= 0) {
+            alert("Product ID is not available.");
+            return;
+        }
+
+        const key = String(productId);
+        const wishlistItemId = wishlistItems[key];
+
+        try {
+            setWishlistLoading((previous) => ({
+                ...previous,
+                [key]: true,
+            }));
+
+            // Already in Wishlist → Remove
+            if (wishlistItemId) {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/wishlist/items/${wishlistItemId}`,
+                    {
+                        method: "DELETE",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(
+                        result.message ||
+                            "Unable to remove product from wishlist."
+                    );
+                }
+
+                setWishlistItems((previous) => {
+                    const updated = { ...previous };
+                    delete updated[key];
+                    return updated;
+                });
+            } else {
+                // Not in Wishlist → Add
+                const response = await fetch(
+                    `${API_BASE_URL}/api/wishlist/items`,
+                    {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                        }),
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(
+                        result.message ||
+                            "Unable to add product to wishlist."
+                    );
+                }
+
+                setWishlistItems((previous) => ({
+                    ...previous,
+                    [key]: result.data.wishlist_item_id,
+                }));
+            }
         } catch (error) {
-            if (error.name !== "AbortError") {
-                console.error("Failed to load flash sales:", error);
-            }
+            console.error("Wishlist error:", error);
+            alert(error.message || "Wishlist operation failed.");
+        } finally {
+            setWishlistLoading((previous) => ({
+                ...previous,
+                [key]: false,
+            }));
         }
     };
 
-    fetchFlashSales();
+    // Countdown Timer
+    useEffect(() => {
+        if (!products.length) return;
 
-    const refreshTimer = setInterval(fetchFlashSales, 30000);
+        const timer = setInterval(() => {
+            setNow(Date.now());
+        }, 1000);
 
-    return () => {
-        controller.abort();
-        clearInterval(refreshTimer);
+        return () => clearInterval(timer);
+    }, [products.length]);
+
+    // Slider Previous
+    const handlePrevious = () => {
+        if (sliderRef.current) {
+            sliderRef.current.scrollBy({
+                left: -sliderRef.current.clientWidth,
+                behavior: "smooth",
+            });
+        }
     };
-}, []);
 
-// Countdown Timer
-useEffect(() => {
-    if (!products.length) return;
+    // Slider Next
+    const handleNext = () => {
+        if (sliderRef.current) {
+            sliderRef.current.scrollBy({
+                left: sliderRef.current.clientWidth,
+                behavior: "smooth",
+            });
+        }
+    };
 
-    const timer = setInterval(() => {
-        setNow(Date.now());
-    }, 1000);
+    if (!products.length) return null;
 
-    return () => clearInterval(timer);
-}, [products.length]);
+    // Countdown Calculation
+    const validEndTimes = products
+        .map((product) => product.endTime)
+        .filter((time) => Number.isFinite(time));
 
-// Slider Previous
-const handlePrevious = () => {
-    if (sliderRef.current) {
-        sliderRef.current.scrollBy({
-            left: -sliderRef.current.clientWidth,
-            behavior: "smooth",
-        });
-    }
-};
+    const saleEnd = validEndTimes.length
+        ? Math.min(...validEndTimes)
+        : now;
 
-// Slider Next
-const handleNext = () => {
-    if (sliderRef.current) {
-        sliderRef.current.scrollBy({
-            left: sliderRef.current.clientWidth,
-            behavior: "smooth",
-        });
-    }
-};
+    const timeLeft = Math.max(
+        0,
+        Math.floor((saleEnd - now) / 1000)
+    );
 
-if (!products.length) return null;
+    const hours = String(
+        Math.floor(timeLeft / 3600)
+    ).padStart(2, "0");
 
-// Countdown Calculation
-const validEndTimes = products
-    .map((product) => product.endTime)
-    .filter((time) => Number.isFinite(time));
+    const minutes = String(
+        Math.floor((timeLeft % 3600) / 60)
+    ).padStart(2, "0");
 
-const saleEnd = validEndTimes.length
-    ? Math.min(...validEndTimes)
-    : now;
+    const seconds = String(timeLeft % 60).padStart(2, "0");
 
-const timeLeft = Math.max(0, Math.floor((saleEnd - now) / 1000));
+    return (
+        <section className="bg-aqua-spring py-10 sm:py-12 lg:py-16">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-const hours = String(Math.floor(timeLeft / 3600)).padStart(2, "0");
-const minutes = String(Math.floor((timeLeft % 3600) / 60)).padStart(2, "0");
-const seconds = String(timeLeft % 60).padStart(2, "0");
+                {/* Header */}
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-return (
-    <section className="bg-aqua-spring py-10 sm:py-12 lg:py-16">
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-[2px] text-ocean-green">
+                            Don't Miss Out
+                        </p>
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-            {/* Header */}
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                <div>
-                    <p className="text-xs font-bold uppercase tracking-[2px] text-ocean-green">
-                        Don't Miss Out
-                    </p>
-
-                    <h2 className="mt-1 text-2xl font-bold text-cyprus sm:text-3xl">
-                        Limited-Time Deal
-                    </h2>
-                </div>
-
-                {/* Countdown + Slider Buttons */}
-                <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">
-
-                    <div className="flex items-center gap-2">
-
-                        <span className="text-xs font-medium text-text-grey">
-                            Ends in
-                        </span>
-
-                        <div className="flex items-center gap-1">
-
-                            <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
-                                {hours}
-                            </span>
-
-                            <span className="font-bold text-cyprus">:</span>
-
-                            <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
-                                {minutes}
-                            </span>
-
-                            <span className="font-bold text-cyprus">:</span>
-
-                            <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
-                                {seconds}
-                            </span>
-
-                        </div>
+                        <h2 className="mt-1 text-2xl font-bold text-cyprus sm:text-3xl">
+                            Limited-Time Deal
+                        </h2>
                     </div>
 
-                    {/* Slider Navigation */}
-                    <div className="flex items-center gap-2">
+                    {/* Countdown + Slider Buttons */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">
 
-                        <button
-                            type="button"
-                            onClick={handlePrevious}
-                            aria-label="Previous products"
-                            className="flex h-9 w-9 items-center justify-center rounded-full border border-cyprus bg-white text-cyprus transition hover:bg-cyprus hover:text-white"
-                        >
-                            <i className="fa-solid fa-chevron-left text-xs"></i>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-text-grey">
+                                Ends in
+                            </span>
 
-                        <button
-                            type="button"
-                            onClick={handleNext}
-                            aria-label="Next products"
-                            className="flex h-9 w-9 items-center justify-center rounded-full border border-cyprus bg-white text-cyprus transition hover:bg-cyprus hover:text-white"
-                        >
-                            <i className="fa-solid fa-chevron-right text-xs"></i>
-                        </button>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            {/* Product Slider */}
-            <div
-                ref={sliderRef}
-                className="flex gap-5 overflow-x-auto scroll-smooth pb-3 snap-x snap-mandatory scrollbar-hide"
-            >
-
-                {products.map((product) => (
-                    <div
-                        key={product.id}
-                        className="w-[85%] flex-shrink-0 snap-start sm:w-[calc(50%-10px)] lg:w-[calc(25%-15px)]"
-                    >
-
-                        <div className="group h-full overflow-hidden rounded-2xl border border-ocean-green/10 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg">
-
-                            {/* Product Image */}
-                            <div className="relative h-52 overflow-hidden bg-gray-100">
-
-                                <img
-                                    src={product.image}
-                                    alt={product.title}
-                                    onError={(e) => {
-                                        e.currentTarget.src =
-                                            "https://placehold.co/500x500?text=Product";
-                                    }}
-                                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                                />
-
-                                <span className="absolute left-3 top-3 rounded-full bg-error px-3 py-1.5 text-[10px] font-bold text-white">
-                                    {product.discount}
+                            <div className="flex items-center gap-1">
+                                <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
+                                    {hours}
                                 </span>
 
-                                <button
-                                    type="button"
-                                    aria-label={`Add ${product.title} to wishlist`}
-                                    className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-lg text-cyprus shadow-sm transition hover:text-ocean-green"
-                                >
-                                    ♡
-                                </button>
+                                <span className="font-bold text-cyprus">
+                                    :
+                                </span>
 
+                                <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
+                                    {minutes}
+                                </span>
+
+                                <span className="font-bold text-cyprus">
+                                    :
+                                </span>
+
+                                <span className="rounded-lg bg-cyprus px-2.5 py-2 text-sm font-bold text-white">
+                                    {seconds}
+                                </span>
                             </div>
-
-                            {/* Product Details */}
-                            <div className="p-4">
-
-                                <h3 className="truncate text-base font-bold text-cyprus">
-                                    {product.title}
-                                </h3>
-
-                                <p className="mt-1 line-clamp-2 min-h-[40px] text-xs leading-5 text-text-grey">
-                                    {product.description}
-                                </p>
-
-                                <div className="mt-3 flex items-center gap-2">
-
-                                    <span className="text-lg font-bold text-ocean-green">
-                                        ₹{product.price.toLocaleString("en-IN")}
-                                    </span>
-
-                                    <span className="text-xs text-gray-400 line-through">
-                                        ₹{product.oldPrice.toLocaleString("en-IN")}
-                                    </span>
-
-                                </div>
-
-                                <Link
-                                    to={`/product/${product.id}`}
-                                    className="mt-4 flex w-full items-center justify-center rounded-full bg-ocean-green px-4 py-2.5 text-xs font-bold text-white transition hover:bg-cyprus"
-                                >
-                                    View Deal
-                                </Link>
-
-                            </div>
-
                         </div>
 
+                        {/* Slider Navigation */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handlePrevious}
+                                aria-label="Previous products"
+                                className="flex h-9 w-9 items-center justify-center rounded-full border border-cyprus bg-white text-cyprus transition hover:bg-cyprus hover:text-white"
+                            >
+                                <i className="fa-solid fa-chevron-left text-xs" />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleNext}
+                                aria-label="Next products"
+                                className="flex h-9 w-9 items-center justify-center rounded-full border border-cyprus bg-white text-cyprus transition hover:bg-cyprus hover:text-white"
+                            >
+                                <i className="fa-solid fa-chevron-right text-xs" />
+                            </button>
+                        </div>
                     </div>
-                ))}
+                </div>
 
+                {/* Product Slider */}
+                <div
+                    ref={sliderRef}
+                    className="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth pb-3 scrollbar-hide"
+                >
+                    {products.map((product) => {
+                        const productKey = String(product.id);
+                        const isWishlisted = Boolean(
+                            wishlistItems[productKey]
+                        );
+                        const isLoading =
+                            Boolean(wishlistLoading[productKey]);
+
+                        return (
+                            <div
+                                key={product.id}
+                                className="w-[85%] flex-shrink-0 snap-start sm:w-[calc(50%-10px)] lg:w-[calc(25%-15px)]"
+                            >
+                                <div className="group h-full overflow-hidden rounded-2xl border border-ocean-green/10 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg">
+
+                                    {/* Product Image */}
+                                    <div className="relative h-52 overflow-hidden bg-gray-100">
+
+                                        <img
+                                            src={product.image}
+                                            alt={product.title}
+                                            loading="lazy"
+                                            onError={(event) => {
+                                                event.currentTarget.onerror = null;
+                                                event.currentTarget.src =
+                                                    "https://placehold.co/500x500?text=Product";
+                                            }}
+                                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                                        />
+
+                                        <span className="absolute left-3 top-3 rounded-full bg-error px-3 py-1.5 text-[10px] font-bold text-white">
+                                            {product.discount}
+                                        </span>
+
+                                        {/* Wishlist Button */}
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleWishlist(product)
+                                            }
+                                            disabled={isLoading}
+                                            aria-label={
+                                                isWishlisted
+                                                    ? "Remove from wishlist"
+                                                    : "Add to wishlist"
+                                            }
+                                            aria-pressed={isWishlisted}
+                                            title={
+                                                isWishlisted
+                                                    ? "Remove from wishlist"
+                                                    : "Add to wishlist"
+                                            }
+                                            className={`absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-60 ${
+                                                isWishlisted
+                                                    ? "text-red-500"
+                                                    : "text-cyprus hover:text-red-500"
+                                            }`}
+                                        >
+                                            {isLoading ? (
+                                                <i className="fa-solid fa-spinner fa-spin" />
+                                            ) : (
+                                                <i
+                                                    className={`${
+                                                        isWishlisted
+                                                            ? "fa-solid"
+                                                            : "fa-regular"
+                                                    } fa-heart text-lg`}
+                                                />
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Product Details */}
+                                    <div className="p-4">
+                                        <h3 className="truncate text-base font-bold text-cyprus">
+                                            {product.title}
+                                        </h3>
+
+                                        <p className="mt-1 line-clamp-2 min-h-[40px] text-xs leading-5 text-text-grey">
+                                            {product.description}
+                                        </p>
+
+                                        <div className="mt-3 flex items-center gap-2">
+                                            <span className="text-lg font-bold text-ocean-green">
+                                                ₹
+                                                {product.price.toLocaleString(
+                                                    "en-IN"
+                                                )}
+                                            </span>
+
+                                            <span className="text-xs text-gray-400 line-through">
+                                                ₹
+                                                {product.oldPrice.toLocaleString(
+                                                    "en-IN"
+                                                )}
+                                            </span>
+                                        </div>
+
+                                        <Link
+                                            to={`/product/${product.id}`}
+                                            className="mt-4 flex w-full items-center justify-center rounded-full bg-ocean-green px-4 py-2.5 text-xs font-bold text-white transition hover:bg-cyprus"
+                                        >
+                                            View Deal
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-
-        </div>
-
-    </section>
-);
-
+        </section>
+    );
 }
 
 export default LimitedTimeDeal;

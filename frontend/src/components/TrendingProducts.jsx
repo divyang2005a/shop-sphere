@@ -1,14 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ProductCard from "./ProductCard";
 
 const API_URL = "http://192.168.1.20:5000/api";
 
 function TrendingProducts() {
+    const navigate = useNavigate();
+
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
+    // Wishlist states
+    const [wishlistItems, setWishlistItems] = useState({});
+    const [wishlistLoading, setWishlistLoading] = useState({});
+
+    // Fetch Trending Products
     useEffect(() => {
         const controller = new AbortController();
 
@@ -26,7 +33,8 @@ function TrendingProducts() {
                 }
 
                 const result = await response.json();
-                const productList = result.products ?? result.data?.products;
+                const productList =
+                    result.products ?? result.data?.products;
 
                 if (!Array.isArray(productList)) {
                     throw new Error("Trending products response is invalid.");
@@ -50,6 +58,154 @@ function TrendingProducts() {
         return () => controller.abort();
     }, []);
 
+    // Fetch Wishlist
+    const fetchWishlist = async () => {
+        const token = localStorage.getItem("shopsphereToken");
+
+        if (!token) {
+            setWishlistItems({});
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/wishlist`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error("Unable to load wishlist.");
+            }
+
+            const result = await response.json();
+
+            const items =
+                result.data?.items || result.items || [];
+
+            const wishlistMap = {};
+
+            items.forEach((item) => {
+                const productId = Number(
+                    item.product_id ?? item.product?.id
+                );
+
+                const wishlistItemId =
+                    item.wishlist_item_id ?? item.id;
+
+                if (productId && wishlistItemId) {
+                    wishlistMap[productId] = wishlistItemId;
+                }
+            });
+
+            setWishlistItems(wishlistMap);
+        } catch (error) {
+            console.error("Wishlist fetch error:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchWishlist();
+    }, []);
+
+    // Add / Remove Wishlist
+    const handleWishlist = async (product) => {
+        const token = localStorage.getItem("shopsphereToken");
+
+        if (!token) {
+            navigate("/login");
+            return;
+        }
+
+        const productId = Number(product.id ?? product.product_id);
+
+        if (!productId) {
+            console.error("Invalid product ID:", product);
+            return;
+        }
+
+        if (wishlistLoading[productId]) return;
+
+        setWishlistLoading((previous) => ({
+            ...previous,
+            [productId]: true,
+        }));
+
+        try {
+            const wishlistItemId = wishlistItems[productId];
+
+            // Remove from Wishlist
+            if (wishlistItemId) {
+                const response = await fetch(
+                    `${API_URL}/wishlist/items/${wishlistItemId}`,
+                    {
+                        method: "DELETE",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.message || "Failed to remove from wishlist."
+                    );
+                }
+
+                setWishlistItems((previous) => {
+                    const updated = { ...previous };
+                    delete updated[productId];
+                    return updated;
+                });
+            }
+
+            // Add to Wishlist
+            else {
+                const response = await fetch(
+                    `${API_URL}/wishlist/items`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                        }),
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.message || "Failed to add to wishlist."
+                    );
+                }
+
+                const newWishlistItemId =
+                    result.data?.wishlist_item_id;
+
+                if (newWishlistItemId) {
+                    setWishlistItems((previous) => ({
+                        ...previous,
+                        [productId]: newWishlistItemId,
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error("Wishlist error:", error);
+            alert(error.message || "Something went wrong.");
+        } finally {
+            setWishlistLoading((previous) => ({
+                ...previous,
+                [productId]: false,
+            }));
+        }
+    };
+
     return (
         <section className="bg-white py-10 sm:py-12 lg:py-16">
 
@@ -58,7 +214,6 @@ function TrendingProducts() {
                 <div className="mb-6 flex items-center justify-between">
 
                     <div>
-
                         <p className="text-xs font-bold uppercase tracking-[2px] text-ocean-green">
                             Trending Now
                         </p>
@@ -66,19 +221,33 @@ function TrendingProducts() {
                         <h2 className="mt-1 text-2xl font-bold text-cyprus sm:text-3xl">
                             Trending Product
                         </h2>
-
                     </div>
 
                 </div>
 
                 <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
-                    {products.map((product) => (
-                        <ProductCard
-                            key={product.id}
-                            product={product}
-                        />
-                    ))}
+                    {products.map((product) => {
+                        const productId = Number(
+                            product.id ?? product.product_id
+                        );
+
+                        return (
+                            <ProductCard
+                                key={productId}
+                                product={product}
+                                isWishlisted={Boolean(
+                                    wishlistItems[productId]
+                                )}
+                                onWishlistToggle={() =>
+                                    handleWishlist(product)
+                                }
+                                wishlistLoading={Boolean(
+                                    wishlistLoading[productId]
+                                )}
+                            />
+                        );
+                    })}
 
                     {loading &&
                         Array.from({ length: 3 }, (_, index) => (
@@ -88,6 +257,7 @@ function TrendingProducts() {
                                 aria-hidden="true"
                             >
                                 <div className="aspect-square bg-gray-100" />
+
                                 <div className="space-y-3 p-4">
                                     <div className="h-4 w-3/4 rounded bg-gray-100" />
                                     <div className="h-4 w-full rounded bg-gray-100" />
