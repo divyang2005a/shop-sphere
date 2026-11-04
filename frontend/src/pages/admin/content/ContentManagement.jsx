@@ -31,6 +31,7 @@ const emptyBanner = {
     link: "",
     start_date: "",
     end_date: "",
+    placement: "hero",
     status: "active",
     sort_order: 0,
 };
@@ -223,6 +224,7 @@ function ContentManagement() {
             link: banner.link || "",
             start_date: toDateTimeLocal(banner.start_date),
             end_date: toDateTimeLocal(banner.end_date),
+            placement: banner.placement || "hero",
             status: banner.status || "active",
             sort_order: banner.sort_order ?? 0,
         });
@@ -292,6 +294,7 @@ function ContentManagement() {
 
         formData.append("title", bannerForm.title.trim());
         formData.append("link", bannerForm.link.trim());
+        formData.append("placement", bannerForm.placement);
         formData.append("status", bannerForm.status);
         formData.append("sort_order", String(bannerForm.sort_order || 0));
 
@@ -589,7 +592,7 @@ function ContentManagement() {
                         </h1>
 
                         <p className="mt-2 text-sm text-slate-500 sm:text-base">
-                            Manage website banners and configuration settings.
+                            Manage hero banners, their display schedule, and website settings.
                         </p>
                     </div>
 
@@ -697,7 +700,9 @@ function ContentManagement() {
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-ocean-green px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
                         >
                             <FontAwesomeIcon icon={faPlus} />
-                            {activeTab === "banners" ? "Add Banner" : "Add Setting"}
+                            {activeTab === "banners"
+                                ? "Add Banner"
+                                : "Add Setting"}
                         </button>
                     </div>
 
@@ -758,10 +763,11 @@ function ContentManagement() {
                         <>
                             <div className="overflow-x-auto">
                                 {activeTab === "banners" ? (
-                                    <table className="w-full min-w-[850px] text-left">
+                                    <table className="w-full min-w-[950px] text-left">
                                         <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                                             <tr>
                                                 <th className="px-6 py-4 font-semibold">Banner</th>
+                                                <th className="px-6 py-4 font-semibold">Placement</th>
                                                 <th className="px-6 py-4 font-semibold">Schedule</th>
                                                 <th className="px-6 py-4 font-semibold">Order</th>
                                                 <th className="px-6 py-4 font-semibold">Status</th>
@@ -805,6 +811,14 @@ function ContentManagement() {
                                                                 </p>
                                                             </div>
                                                         </div>
+                                                    </td>
+
+                                                    <td className="px-6 py-4">
+                                                        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold capitalize text-slate-700">
+                                                            {banner.placement === "promo"
+                                                                ? "Promo card"
+                                                                : "Hero slider"}
+                                                        </span>
                                                     </td>
 
                                                     <td className="px-6 py-4">
@@ -1014,8 +1028,10 @@ function ContentManagement() {
             {bannerModal && (
                 <ModalShell
                     onClose={closeBannerModal}
-                    title={editingBanner ? "Edit Banner" : "Create Banner"}
-                    subtitle="Manage the banner shown on your website."
+                    title={
+                        editingBanner ? "Edit Banner" : "Create Banner"
+                    }
+                    subtitle="Choose where this banner appears, then set its image, link, and display schedule."
                     icon={faImage}
                     wide
                 >
@@ -1115,7 +1131,7 @@ function ContentManagement() {
                                     </div>
                                 </div>
 
-                                <FormField label="Start Date">
+                                <FormField label="Show From">
                                     <div className="relative">
                                         <FontAwesomeIcon
                                             icon={faCalendarDays}
@@ -1130,9 +1146,12 @@ function ContentManagement() {
                                             className={`${inputClass} pl-10`}
                                         />
                                     </div>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Leave blank to show without a start-time limit.
+                                    </p>
                                 </FormField>
 
-                                <FormField label="End Date">
+                                <FormField label="Hide After">
                                     <div className="relative">
                                         <FontAwesomeIcon
                                             icon={faCalendarDays}
@@ -1148,11 +1167,29 @@ function ContentManagement() {
                                             className={`${inputClass} pl-10`}
                                         />
                                     </div>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Leave blank to show without an end-time limit.
+                                    </p>
                                 </FormField>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <FormField label="Placement" required>
+                                <select
+                                    name="placement"
+                                    value={bannerForm.placement}
+                                    onChange={handleBannerInput}
+                                    required
+                                    className={inputClass}
+                                >
+                                    <option value="hero">Hero slider</option>
+                                    <option value="promo">
+                                        Promo cards below hero
+                                    </option>
+                                </select>
+                            </FormField>
+
                             <FormField label="Status" required>
                                 <select
                                     name="status"

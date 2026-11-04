@@ -17,6 +17,7 @@ function Navbar() {
         { name: "Electronics", slug: "electronics", icon: "fa-solid fa-laptop" },
         { name: "Beauty", slug: "beauty", icon: "fa-solid fa-pump-soap" },
         { name: "Appliances", slug: "appliances", icon: "fa-solid fa-tv" },
+        { name: "Gaming", slug: "Gaming", icon: "fa-solid fa-gamepad" },
         { name: "Toys & Baby", slug: "toys-baby", icon: "fa-solid fa-baby" },
         { name: "Food & Health", slug: "food-health", icon: "fa-solid fa-jar" },
         { name: "Auto Accessories", slug: "auto-accessories", icon: "fa-solid fa-car" },

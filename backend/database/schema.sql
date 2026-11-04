@@ -96,6 +96,7 @@ CREATE TABLE `banners` (
   `link` varchar(500) DEFAULT NULL,
   `start_date` datetime DEFAULT NULL,
   `end_date` datetime DEFAULT NULL,
+  `placement` varchar(20) NOT NULL DEFAULT 'hero',
   `status` varchar(50) DEFAULT 'active',
   `sort_order` int(11) DEFAULT 0,
   PRIMARY KEY (`id`)

@@ -3,50 +3,22 @@ import React, { useEffect, useState } from "react";
 const API_URL = "http://192.168.1.20:5000/api";
 const SERVER_URL = API_URL.replace(/\/api$/, "");
 
-const DEFAULT_SLIDES = [
-    {
-        id: 1,
-        title: "Discover the Latest Deals",
-        highlight: "Up to 50% Off!",
-        description:
-            "Explore amazing products, exclusive offers and exciting deals all in one place.",
-        button: "Shop Now",
-        image:
-            "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1600&q=85",
-        link: "/products",
-    },
-    {
-        id: 2,
-        title: "Fresh Styles for Every Day",
-        highlight: "New Collection",
-        description:
-            "Discover the latest fashion, accessories and trending styles for everyone.",
-        button: "Explore Collection",
-        image:
-            "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1600&q=85",
-        link: "/products",
-    },
-    {
-        id: 3,
-        title: "Upgrade Your Lifestyle",
-        highlight: "Special Offers",
-        description:
-            "Find electronics, home essentials and smart products at amazing prices.",
-        button: "View Deals",
-        image:
-            "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=1600&q=85",
-        link: "/products",
-    },
-];
-
 function HeroSlider() {
-    const [slides, setSlides] = useState(DEFAULT_SLIDES);
+    const [slides, setSlides] = useState([]);
     const [currentSlide, setCurrentSlide] = useState(0);
 
     useEffect(() => {
+        let isMounted = true;
+        let activeRequest;
+
         const fetchBanners = async () => {
+            activeRequest?.abort();
+            activeRequest = new AbortController();
+
             try {
-                const response = await fetch(`${API_URL}/banners`);
+                const response = await fetch(`${API_URL}/banners?placement=hero`, {
+                    signal: activeRequest.signal,
+                });
                 const result = await response.json();
 
                 if (!response.ok || result.success === false) {
@@ -93,19 +65,33 @@ function HeroSlider() {
                         };
                     });
 
-                if (activeSlides.length > 0) {
+                if (isMounted) {
                     setSlides(activeSlides);
-                    setCurrentSlide(0);
+                    setCurrentSlide((previous) =>
+                        Math.min(previous, Math.max(activeSlides.length - 1, 0))
+                    );
                 }
             } catch (error) {
-                console.error("Failed to load hero banners:", error);
+                if (error.name !== "AbortError") {
+                    console.error("Failed to load hero banners:", error);
+                }
             }
         };
 
         fetchBanners();
+
+        const refreshTimer = setInterval(fetchBanners, 30000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(refreshTimer);
+            activeRequest?.abort();
+        };
     }, []);
 
     useEffect(() => {
+        if (slides.length < 2) return undefined;
+
         const timer = setInterval(() => {
             setCurrentSlide((previous) =>
                 previous === slides.length - 1 ? 0 : previous + 1
@@ -132,6 +118,8 @@ function HeroSlider() {
     };
 
     const slide = slides[currentSlide];
+
+    if (!slide) return null;
 
     return (
         <section className="w-full bg-aqua-spring">

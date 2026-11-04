@@ -60,6 +60,18 @@ const parseBannerFields = (body, { partial = false, uploadedImage } = {}) => {
     }
   }
 
+  if (!partial || has("placement")) {
+    const placement =
+      body.placement === undefined ? "hero" : body.placement;
+    if (
+      typeof placement !== "string" ||
+      !["hero", "promo"].includes(placement.trim().toLowerCase())
+    ) {
+      return { error: "Banner placement must be hero or promo" };
+    }
+    fields.placement = placement.trim().toLowerCase();
+  }
+
   if (!partial || has("status")) {
     const status = body.status === undefined ? "active" : body.status;
     if (
@@ -94,7 +106,7 @@ const parseBannerFields = (body, { partial = false, uploadedImage } = {}) => {
 const getBanners = async (req, res) => {
   try {
     const [banners] = await db.promise().execute(
-      `SELECT id, title, image, link, start_date, end_date, status, sort_order
+      `SELECT id, title, image, link, start_date, end_date, placement, status, sort_order
        FROM banners
        ORDER BY sort_order ASC, id DESC`,
     );
@@ -112,15 +124,32 @@ const getBanners = async (req, res) => {
   }
 };
 
-const getActiveBanners = async (_req, res) => {
+const getActiveBanners = async (req, res) => {
+  const placement = req.query.placement;
+  if (
+    placement !== undefined &&
+    (typeof placement !== "string" ||
+      !["hero", "promo"].includes(placement.toLowerCase()))
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "placement must be hero or promo",
+    });
+  }
+
+  const placementFilter = placement ? "AND placement = ?" : "";
+  const values = placement ? [placement.toLowerCase()] : [];
+
   try {
     const [banners] = await db.promise().execute(
-      `SELECT id, title, image, link, start_date, end_date, sort_order
+      `SELECT id, title, image, link, start_date, end_date, placement, sort_order
        FROM banners
        WHERE status = 'active'
          AND (start_date IS NULL OR start_date <= NOW())
          AND (end_date IS NULL OR end_date >= NOW())
+         ${placementFilter}
        ORDER BY sort_order ASC, id DESC`,
+      values,
     );
     return res.status(200).json({
       success: true,
@@ -149,14 +178,15 @@ const createBanner = async (req, res) => {
     const { fields } = parsed;
     const [result] = await db.promise().execute(
       `INSERT INTO banners
-         (title, image, link, start_date, end_date, status, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (title, image, link, start_date, end_date, placement, status, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         fields.title,
         fields.image,
         fields.link,
         fields.start_date,
         fields.end_date,
+        fields.placement,
         fields.status,
         fields.sort_order,
       ],

@@ -13,8 +13,8 @@ function Home() {
     return (
         <main className="bg-white">
             <HeroSlider />
-            <PromoSection />
             <PromoBanners />
+            <PromoSection />
             <TrendingProducts />
             <ExploreCategories />
             <BestSellingProducts />

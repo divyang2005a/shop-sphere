@@ -1,41 +1,81 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+const API_BASE_URL = "http://192.168.1.20:5000/api";
+const API_URL = `${API_BASE_URL}/banners?placement=promo`;
+const SERVER_URL = API_BASE_URL.replace(/\/api$/, "");
+
 function PromoBanners() {
-    const banners = [
-        {
-            id: 1,
-            title: "New Fashion",
-            subtitle: "Discover your new style",
-            offer: "Up to 50% OFF",
-            image:
-                "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=85",
-        },
-        {
-            id: 2,
-            title: "Men's Collection",
-            subtitle: "Upgrade your everyday look",
-            offer: "New Arrivals",
-            image:
-                "https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=1200&q=85",
-        },
-        {
-            id: 3,
-            title: "Denim Collection",
-            subtitle: "Classic styles made for you",
-            offer: "Shop Denim",
-            image:
-                "https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=1200&q=85",
-        },
-        {
-            id: 4,
-            title: "Home Appliances",
-            subtitle: "Make everyday living smarter",
-            offer: "Special Deals",
-            image:
-                "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1200&q=85",
-        },
-    ];
+    const [banners, setBanners] = useState([]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const fetchBanners = async () => {
+            try {
+                const response = await fetch(API_URL, {
+                    signal: controller.signal,
+                });
+                const result = await response.json();
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(
+                        result.message || "Unable to load promotional banners."
+                    );
+                }
+
+                if (!Array.isArray(result.banners)) {
+                    throw new Error("Promotional banner response is invalid.");
+                }
+
+                const activeBanners = result.banners
+                    .filter(
+                        (banner) =>
+                            typeof banner.title === "string" &&
+                            banner.title.trim() &&
+                            typeof banner.image === "string" &&
+                            banner.image.trim()
+                    )
+                    .map((banner) => {
+                        const image = banner.image.trim();
+                        const link =
+                            typeof banner.link === "string"
+                                ? banner.link.trim()
+                                : "";
+                        const safeLink =
+                            /^https?:\/\//i.test(link) ||
+                            (link.startsWith("/") && !link.startsWith("//"))
+                                ? link
+                                : "/products";
+
+                        return {
+                            ...banner,
+                            image: /^https?:\/\//i.test(image)
+                                ? image
+                                : `${SERVER_URL}/${image.replace(/^\/+/, "")}`,
+                            link: safeLink,
+                        };
+                    });
+
+                if (!controller.signal.aborted) {
+                    setBanners(activeBanners);
+                }
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    console.error(
+                        "Failed to load promotional banners:",
+                        error
+                    );
+                }
+            }
+        };
+
+        fetchBanners();
+
+        return () => controller.abort();
+    }, []);
+
+    if (banners.length === 0) return null;
 
     return (
         <section className="bg-white py-8 sm:py-10 lg:py-12">
@@ -44,7 +84,18 @@ function PromoBanners() {
 
                 <div className="grid gap-5 md:grid-cols-2">
 
-                    {banners.map((banner) => (
+                    {banners.map((banner) => {
+                        const isExternalLink = /^https?:\/\//i.test(banner.link);
+                        const BannerLink = isExternalLink ? "a" : Link;
+                        const linkProps = isExternalLink
+                            ? {
+                                  href: banner.link,
+                                  target: "_blank",
+                                  rel: "noopener noreferrer",
+                              }
+                            : { to: banner.link };
+
+                        return (
                         <div
                             key={banner.id}
                             className="group relative min-h-[230px] overflow-hidden rounded-2xl"
@@ -63,7 +114,7 @@ function PromoBanners() {
                                 <div className="max-w-[270px]">
 
                                     <p className="text-xs font-bold uppercase tracking-[1.5px] text-surf-crest">
-                                        {banner.offer}
+                                        Featured Offer
                                     </p>
 
                                     <h2 className="mt-2 text-2xl font-bold text-white sm:text-3xl">
@@ -71,11 +122,11 @@ function PromoBanners() {
                                     </h2>
 
                                     <p className="mt-2 text-sm leading-5 text-white/75">
-                                        {banner.subtitle}
+                                        Discover featured products and special offers.
                                     </p>
 
-                                    <Link
-                                        to="/products"
+                                    <BannerLink
+                                        {...linkProps}
                                         className="mt-5 inline-flex items-center rounded-full bg-surf-crest px-5 py-2.5 text-xs font-bold text-cyprus transition duration-300 hover:bg-white"
                                     >
                                         Shop Now
@@ -83,14 +134,15 @@ function PromoBanners() {
                                         <span className="ml-2 text-sm">
                                             <i className="fa-solid fa-angle-right"></i>
                                         </span>
-                                    </Link>
+                                    </BannerLink>
 
                                 </div>
 
                             </div>
 
                         </div>
-                    ))}
+                        );
+                    })}
 
                 </div>
 
