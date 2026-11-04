@@ -460,7 +460,7 @@ function ProductDetails() {
     return () => controller.abort();
   }, [fetchProduct]);
 
-  // Fetch related products.
+  // Fetch recommended products.
   useEffect(() => {
     if (!product) return;
 
@@ -470,10 +470,10 @@ function ProductDetails() {
       setRelatedLoading(true);
 
       try {
-        const category = getCategory(product);
-
         const response = await fetch(
-          `${API_URL}/products?category=${encodeURIComponent(category)}`,
+          `${API_URL}/products/recommended?product_id=${encodeURIComponent(
+            getId(product)
+          )}&limit=8`,
           { signal: controller.signal, headers: getHeaders() }
         );
 
