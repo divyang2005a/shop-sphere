@@ -6,10 +6,16 @@ const {
   getProductDetails,
   getPublicProductImages,
 } = require("../controllers/adminController");
-const { getRecommendedProducts } = require("../controllers/productController");
+const {
+  getBestSellingProducts,
+  getRecommendedProducts,
+} = require("../controllers/productController");
 
 // Get all products or filter by category name/slug
 router.get("/", getProducts);
+
+// Get products ordered by completed and in-progress sales volume
+router.get("/best-selling", getBestSellingProducts);
 
 // Get recommended products, optionally based on a product ID
 router.get("/recommended", getRecommendedProducts);

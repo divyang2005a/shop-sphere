@@ -2,6 +2,79 @@ const db = require("../config/db");
 
 const isPositiveInteger = (value) => /^[1-9]\d*$/.test(String(value ?? ""));
 
+const getBestSellingProducts = (req, res) => {
+  const { limit = "4" } = req.query;
+
+  if (!isPositiveInteger(limit) || Number(limit) > 12) {
+    return res.status(400).json({
+      success: false,
+      message: "limit must be between 1 and 12",
+    });
+  }
+
+  db.query(
+    `SELECT
+       p.id,
+       p.title,
+       p.slug,
+       p.short_description,
+       p.base_price,
+       COALESCE(
+         (SELECT fs.sale_price FROM flash_sales AS fs
+          WHERE fs.product_id = p.id AND fs.status = 'active'
+            AND fs.start_time <= NOW() AND fs.end_time > NOW()
+            AND fs.sold_quantity < fs.stock_limit
+          ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+         p.sale_price
+       ) AS sale_price,
+       EXISTS(
+         SELECT 1 FROM flash_sales AS fs
+         WHERE fs.product_id = p.id AND fs.status = 'active'
+           AND fs.start_time <= NOW() AND fs.end_time > NOW()
+           AND fs.sold_quantity < fs.stock_limit
+       ) AS flash_sale_active,
+       COALESCE(sales.total_sold, 0) AS total_sold,
+       (
+         SELECT pi.image
+         FROM product_images AS pi
+         WHERE pi.product_id = p.id
+         ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.id ASC
+         LIMIT 1
+       ) AS image
+     FROM products AS p
+     LEFT JOIN (
+       SELECT oi.product_id, SUM(oi.quantity) AS total_sold
+       FROM order_items AS oi
+       INNER JOIN orders AS o ON o.id = oi.order_id
+       WHERE LOWER(o.order_status) <> 'cancelled'
+       GROUP BY oi.product_id
+     ) AS sales ON sales.product_id = p.id
+     WHERE LOWER(p.status) = 'active'
+     ORDER BY
+       COALESCE(sales.total_sold, 0) DESC,
+       p.bestseller DESC,
+       p.featured DESC,
+       p.created_at DESC
+     LIMIT ?`,
+    [Number(limit)],
+    (err, products) => {
+      if (err) {
+        console.error("Failed to fetch best-selling products:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to fetch best-selling products",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        products,
+      });
+    },
+  );
+};
+
 const getRecommendedProducts = (req, res) => {
   const { product_id, limit = "8" } = req.query;
 
@@ -123,4 +196,4 @@ const getRecommendedProducts = (req, res) => {
   );
 };
 
-module.exports = { getRecommendedProducts };
+module.exports = { getBestSellingProducts, getRecommendedProducts };

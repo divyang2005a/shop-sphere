@@ -1,43 +1,54 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard";
 
+const API_URL = "http://192.168.1.20:5000/api";
+
 function TrendingProducts() {
-    const products = [
-        {
-            id: 1,
-            title: "Radiant Glow Serum",
-            description: "Gentle yet effective skincare for everyday use.",
-            price: "29.99",
-            oldPrice: "39.99",
-            discount: 20,
-            rating: 4.8,
-            image:
-                "https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?auto=format&fit=crop&w=600&q=80",
-        },
-        {
-            id: 2,
-            title: "Modern Minimalist Vase",
-            description: "Beautiful home decoration for modern interiors.",
-            price: "40.99",
-            oldPrice: "49.99",
-            discount: 18,
-            rating: 4.7,
-            image:
-                "https://images.unsplash.com/photo-1612196808214-b8e1d6145a8c?auto=format&fit=crop&w=600&q=80",
-        },
-        {
-            id: 3,
-            title: "FitPro Smartwatch",
-            description: "Track your fitness and daily activities.",
-            price: "119.99",
-            oldPrice: "149.99",
-            discount: 20,
-            rating: 4.9,
-            image:
-                "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80",
-        },
-    ];
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const loadTrendingProducts = async () => {
+            try {
+                const response = await fetch(
+                    `${API_URL}/products/recommended?limit=3`,
+                    { signal: controller.signal }
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Unable to load trending products (${response.status}).`
+                    );
+                }
+
+                const result = await response.json();
+                const productList = result.products ?? result.data?.products;
+
+                if (!Array.isArray(productList)) {
+                    throw new Error("Trending products response is invalid.");
+                }
+
+                setProducts(productList);
+            } catch (fetchError) {
+                if (fetchError.name !== "AbortError") {
+                    console.error("Trending products error:", fetchError);
+                    setError("Trending products could not be loaded.");
+                }
+            } finally {
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        loadTrendingProducts();
+
+        return () => controller.abort();
+    }, []);
 
     return (
         <section className="bg-white py-10 sm:py-12 lg:py-16">
@@ -75,6 +86,28 @@ function TrendingProducts() {
                             product={product}
                         />
                     ))}
+
+                    {loading &&
+                        Array.from({ length: 3 }, (_, index) => (
+                            <div
+                                key={`trending-skeleton-${index}`}
+                                className="animate-pulse overflow-hidden rounded-2xl border border-gray-100"
+                                aria-hidden="true"
+                            >
+                                <div className="aspect-square bg-gray-100" />
+                                <div className="space-y-3 p-4">
+                                    <div className="h-4 w-3/4 rounded bg-gray-100" />
+                                    <div className="h-4 w-full rounded bg-gray-100" />
+                                    <div className="h-5 w-1/3 rounded bg-gray-100" />
+                                </div>
+                            </div>
+                        ))}
+
+                    {!loading && error && (
+                        <p className="rounded-xl bg-gray-50 p-5 text-sm text-gray-500 sm:col-span-2 lg:col-span-3">
+                            {error}
+                        </p>
+                    )}
 
                     <div className="group relative min-h-[450px] overflow-hidden rounded-xl bg-cyprus">
 
