@@ -108,6 +108,12 @@ const {
   getAdminPaymentMethods,
   updatePaymentMethod,
 } = require("../controllers/paymentMethodController");
+
+const {
+  getAdminFlashSales,
+  createFlashSale,
+  deleteFlashSale,
+} = require("../controllers/flashSaleController");
 const { getAdminPayments } = require("../controllers/adminPaymentController");
 const {
   getBanners,
@@ -411,6 +417,31 @@ router.patch(
   authMiddleware,
   adminMiddleware,
   updateCouponStatus,
+);
+
+// =====================================================
+// FLASH SALES
+// =====================================================
+
+router.get(
+  "/flash-sales",
+  authMiddleware,
+  adminMiddleware,
+  getAdminFlashSales,
+);
+
+router.post(
+  "/flash-sales",
+  authMiddleware,
+  adminMiddleware,
+  createFlashSale,
+);
+
+router.delete(
+  "/flash-sales/:id",
+  authMiddleware,
+  adminMiddleware,
+  deleteFlashSale,
 );
 
 // =====================================================

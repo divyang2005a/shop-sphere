@@ -128,6 +128,7 @@ function ProductCard({ product }) {
 
     const hasDiscount =
         discount > 0 && originalPrice > price;
+    const isFlashSale = Boolean(Number(product?.flash_sale_active));
 
     // Format price
     const formatPrice = (value) =>
@@ -174,11 +175,15 @@ function ProductCard({ product }) {
                 />
 
                 {/* DISCOUNT BADGE */}
-                {hasDiscount && (
+                {isFlashSale ? (
+                    <span className="absolute left-3 top-3 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm sm:text-xs">
+                        FLASH SALE{hasDiscount ? ` · ${discount}% OFF` : ""}
+                    </span>
+                ) : hasDiscount ? (
                     <span className="absolute left-3 top-3 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm sm:text-xs">
                         {discount}% OFF
                     </span>
-                )}
+                ) : null}
 
                 {/* WISHLIST BUTTON */}
                 <button

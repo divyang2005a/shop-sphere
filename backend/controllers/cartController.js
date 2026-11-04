@@ -30,7 +30,18 @@ const getCart = async (req, res) => {
          ci.variant_id,
          ci.quantity,
          ci.unit_price,
-         (ci.quantity * ci.unit_price) AS subtotal,
+         COALESCE(
+           (SELECT fs.sale_price FROM flash_sales AS fs
+            WHERE fs.product_id = p.id AND ci.variant_id IS NULL
+              AND fs.status = 'active'
+              AND fs.start_time <= NOW() AND fs.end_time > NOW()
+              AND fs.sold_quantity < fs.stock_limit
+            ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+           CASE
+             WHEN ci.variant_id IS NOT NULL THEN COALESCE(pv.price, ci.unit_price)
+             ELSE COALESCE(p.sale_price, p.base_price, ci.unit_price)
+           END
+         ) AS current_unit_price,
          p.title,
          p.sku,
          p.stock_quantity AS product_stock,
@@ -45,7 +56,16 @@ const getCart = async (req, res) => {
       [carts[0].id]
     );
 
-    const total = items.reduce(
+    const pricedItems = items.map((item) => {
+      const unitPrice = Number(item.current_unit_price ?? item.unit_price);
+      return {
+        ...item,
+        unit_price: unitPrice,
+        subtotal: unitPrice * Number(item.quantity),
+      };
+    });
+
+    const total = pricedItems.reduce(
       (sum, item) => sum + Number(item.subtotal),
       0
     );
@@ -54,7 +74,7 @@ const getCart = async (req, res) => {
       success: true,
       data: {
         cart: carts[0],
-        items,
+        items: pricedItems,
         total
       }
     });
@@ -162,6 +182,42 @@ const addToCart = async (req, res) => {
       }
     }
 
+    let flashSaleId = null;
+    if (variantId === null) {
+      const [flashSales] = await connection.query(
+        `SELECT id, sale_price, stock_limit, sold_quantity
+         FROM flash_sales
+         WHERE product_id = ?
+           AND status = 'active'
+           AND start_time <= NOW()
+           AND end_time > NOW()
+           AND sold_quantity < stock_limit
+         ORDER BY sale_price ASC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [productId]
+      );
+
+      if (flashSales.length) {
+        const flashSale = flashSales[0];
+        const remainingSaleStock =
+          Number(flashSale.stock_limit) - Number(flashSale.sold_quantity);
+        if (qty > remainingSaleStock) {
+          await connection.rollback();
+          transactionStarted = false;
+          return res.status(400).json({
+            success: false,
+            message: "Requested quantity exceeds the remaining flash sale stock",
+            available_stock: remainingSaleStock,
+          });
+        }
+
+        price = Number(flashSale.sale_price);
+        stock = Math.min(stock, remainingSaleStock);
+        flashSaleId = flashSale.id;
+      }
+    }
+
     if (!Number.isFinite(stock) || stock < 0) {
       await connection.rollback();
       transactionStarted = false;
@@ -262,6 +318,7 @@ const addToCart = async (req, res) => {
       message: "Item added to cart successfully",
       quantity: newQuantity,
       unit_price: price,
+      flash_sale_applied: flashSaleId !== null,
       subtotal: newQuantity * price
     });
   } catch (error) {
@@ -316,7 +373,10 @@ const updateCartItem = async (req, res) => {
          ci.unit_price,
          c.id AS cart_id,
          p.stock_quantity AS product_stock,
+         p.base_price,
+         p.sale_price,
          p.status AS product_status,
+         pv.price AS variant_price,
          pv.stock_quantity AS variant_stock,
          pv.status AS variant_status
        FROM cart_items ci
@@ -365,10 +425,38 @@ const updateCartItem = async (req, res) => {
       });
     }
 
-    const stock =
+    let stock =
       item.variant_id !== null
         ? Number(item.variant_stock ?? 0)
         : Number(item.product_stock ?? 0);
+    let unitPrice =
+      item.variant_id !== null
+        ? Number(item.variant_price ?? item.unit_price)
+        : Number(item.sale_price ?? item.base_price);
+
+    if (item.variant_id === null) {
+      const [flashSales] = await connection.query(
+        `SELECT id, sale_price, stock_limit, sold_quantity
+         FROM flash_sales
+         WHERE product_id = ?
+           AND status = 'active'
+           AND start_time <= NOW()
+           AND end_time > NOW()
+           AND sold_quantity < stock_limit
+         ORDER BY sale_price ASC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [item.product_id]
+      );
+
+      if (flashSales.length > 0) {
+        const flashSale = flashSales[0];
+        const remainingSaleStock =
+          Number(flashSale.stock_limit) - Number(flashSale.sold_quantity);
+        stock = Math.min(stock, remainingSaleStock);
+        unitPrice = Number(flashSale.sale_price);
+      }
+    }
 
     if (!Number.isFinite(stock) || stock < 0) {
       await connection.rollback();
@@ -386,7 +474,7 @@ const updateCartItem = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: "Insufficient stock",
+        message: "Requested quantity exceeds available stock",
         current_quantity: Number(item.old_quantity),
         available_stock: stock
       });
@@ -394,9 +482,9 @@ const updateCartItem = async (req, res) => {
 
     await connection.query(
       `UPDATE cart_items
-       SET quantity = ?, updated_at = NOW()
+       SET quantity = ?, unit_price = ?, updated_at = NOW()
        WHERE id = ?`,
-      [quantity, cartItemId]
+      [quantity, unitPrice, cartItemId]
     );
 
     await connection.query(
@@ -413,19 +501,55 @@ const updateCartItem = async (req, res) => {
          ci.product_id,
          ci.variant_id,
          ci.quantity,
-         ci.unit_price,
-         (ci.quantity * ci.unit_price) AS subtotal,
+         COALESCE(
+           (SELECT fs.sale_price FROM flash_sales AS fs
+            WHERE fs.product_id = p.id AND ci.variant_id IS NULL
+              AND fs.status = 'active'
+              AND fs.start_time <= NOW() AND fs.end_time > NOW()
+              AND fs.sold_quantity < fs.stock_limit
+            ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+           CASE
+             WHEN ci.variant_id IS NOT NULL THEN COALESCE(pv.price, ci.unit_price)
+             ELSE COALESCE(p.sale_price, p.base_price, ci.unit_price)
+           END
+         ) AS unit_price,
+         (ci.quantity * COALESCE(
+           (SELECT fs.sale_price FROM flash_sales AS fs
+            WHERE fs.product_id = p.id AND ci.variant_id IS NULL
+              AND fs.status = 'active'
+              AND fs.start_time <= NOW() AND fs.end_time > NOW()
+              AND fs.sold_quantity < fs.stock_limit
+            ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+           CASE
+             WHEN ci.variant_id IS NOT NULL THEN COALESCE(pv.price, ci.unit_price)
+             ELSE COALESCE(p.sale_price, p.base_price, ci.unit_price)
+           END
+         )) AS subtotal,
          p.title
        FROM cart_items ci
        JOIN products p ON p.id = ci.product_id
+       LEFT JOIN product_variants pv ON pv.id = ci.variant_id
        WHERE ci.id = ?`,
       [cartItemId]
     );
 
     const [totals] = await db.promise().query(
-      `SELECT COALESCE(SUM(quantity * unit_price), 0) AS total
-       FROM cart_items
-       WHERE cart_id = ?`,
+      `SELECT COALESCE(SUM(ci.quantity * COALESCE(
+         (SELECT fs.sale_price FROM flash_sales AS fs
+          WHERE fs.product_id = p.id AND ci.variant_id IS NULL
+            AND fs.status = 'active'
+            AND fs.start_time <= NOW() AND fs.end_time > NOW()
+            AND fs.sold_quantity < fs.stock_limit
+          ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+         CASE
+           WHEN ci.variant_id IS NOT NULL THEN COALESCE(pv.price, ci.unit_price)
+           ELSE COALESCE(p.sale_price, p.base_price, ci.unit_price)
+         END
+       )), 0) AS total
+       FROM cart_items ci
+       JOIN products p ON p.id = ci.product_id
+       LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+       WHERE ci.cart_id = ?`,
       [item.cart_id]
     );
 

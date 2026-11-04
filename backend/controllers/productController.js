@@ -40,7 +40,20 @@ const getRecommendedProducts = (req, res) => {
         p.slug,
         p.short_description,
         p.base_price,
-        p.sale_price,
+        COALESCE(
+          (SELECT fs.sale_price FROM flash_sales AS fs
+           WHERE fs.product_id = p.id AND fs.status = 'active'
+             AND fs.start_time <= NOW() AND fs.end_time > NOW()
+             AND fs.sold_quantity < fs.stock_limit
+           ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+          p.sale_price
+        ) AS sale_price,
+        EXISTS(
+          SELECT 1 FROM flash_sales AS fs
+          WHERE fs.product_id = p.id AND fs.status = 'active'
+            AND fs.start_time <= NOW() AND fs.end_time > NOW()
+            AND fs.sold_quantity < fs.stock_limit
+        ) AS flash_sale_active,
         p.discount_percentage,
         p.stock_status,
         p.featured,

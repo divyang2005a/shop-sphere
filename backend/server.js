@@ -66,6 +66,7 @@ const bannerRoutes = require("./routes/bannerRoutes");
 const shipmentRoutes = require("./routes/shipmentRoutes");
 const paymentMethodRoutes = require("./routes/paymentMethodRoutes");
 const shippingRoutes = require("./routes/shippingRoutes");
+const flashSaleRoutes = require("./routes/flashSaleRoutes");
 
 app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
@@ -80,6 +81,7 @@ app.use("/api/banners", bannerRoutes);
 app.use("/api/shipments", shipmentRoutes);
 app.use("/api/payment-methods", paymentMethodRoutes);
 app.use("/api/shipping", shippingRoutes);
+app.use("/api/flash-sales", flashSaleRoutes);
 
 app.use("/api/support", require("./routes/supportRoutes"));
 

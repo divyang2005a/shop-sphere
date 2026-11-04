@@ -2,73 +2,78 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 function LimitedTimeDeal() {
-    const products = [
-        {
-            id: 1,
-            title: "Samsung Galaxy",
-            description: "Latest smartphone with powerful performance.",
-            price: "$799.99",
-            oldPrice: "$999.99",
-            discount: "20% OFF",
-            rating: "4.8",
-            image:
-                "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=700&q=85",
-        },
-        {
-            id: 2,
-            title: "Wireless Earbuds",
-            description: "Clear sound and compact wireless design.",
-            price: "$49.99",
-            oldPrice: "$79.99",
-            discount: "35% OFF",
-            rating: "4.7",
-            image:
-                "https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=700&q=85",
-        },
-        {
-            id: 3,
-            title: "Winter Fashion Jacket",
-            description: "Stay comfortable and stylish this winter.",
-            price: "$89.99",
-            oldPrice: "$129.99",
-            discount: "30% OFF",
-            rating: "4.6",
-            image:
-                "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=700&q=85",
-        },
-        {
-            id: 4,
-            title: "Modern Sneakers",
-            description: "Modern sneakers for everyday style.",
-            price: "$59.99",
-            oldPrice: "$89.99",
-            discount: "33% OFF",
-            rating: "4.8",
-            image:
-                "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=85",
-        },
-    ];
-
-    const [timeLeft, setTimeLeft] = useState(
-        8 * 60 * 60 + 42 * 60 + 19
-    );
+    const [products, setProducts] = useState([]);
+    const [now, setNow] = useState(0);
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setTimeLeft((previous) => {
-                if (previous <= 0) {
-                    return 8 * 60 * 60 + 42 * 60 + 19;
+        const controller = new AbortController();
+
+        const fetchFlashSales = async () => {
+            try {
+                const response = await fetch(
+                    "http://192.168.1.20:5000/api/flash-sales",
+                    { signal: controller.signal }
+                );
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(
+                        result.message || "Unable to load flash sales."
+                    );
                 }
 
-                return previous - 1;
-            });
-        }, 1000);
+                if (!Array.isArray(result.flash_sales)) {
+                    throw new Error("Flash sales response is invalid.");
+                }
+
+                const serverUrl = "http://192.168.1.20:5000";
+                setNow(Date.now());
+                setProducts(
+                    result.flash_sales.map((sale) => ({
+                        id: sale.product_id,
+                        title: sale.product_title,
+                        description:
+                            sale.short_description ||
+                            "Limited-time offer while stocks last.",
+                        price: Number(sale.sale_price),
+                        oldPrice: Number(sale.original_price),
+                        discount: `${Math.round(
+                            Number(sale.discount_percentage)
+                        )}% OFF`,
+                        image: sale.image
+                            ? /^https?:\/\//i.test(sale.image)
+                                ? sale.image
+                                : `${serverUrl}/${sale.image.replace(/^\/+/, "")}`
+                            : "https://placehold.co/500x500?text=Product",
+                        endTime: new Date(sale.end_time).getTime(),
+                    }))
+                );
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    console.error("Failed to load flash sales:", error);
+                }
+            }
+        };
+
+        fetchFlashSales();
+        const refreshTimer = setInterval(fetchFlashSales, 30000);
 
         return () => {
-            clearInterval(timer);
+            controller.abort();
+            clearInterval(refreshTimer);
         };
     }, []);
 
+    useEffect(() => {
+        if (!products.length) return undefined;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [products.length]);
+
+    if (!products.length) return null;
+
+    const saleEnd = Math.min(...products.map((product) => product.endTime));
+    const timeLeft = Math.max(0, Math.floor((saleEnd - now) / 1000));
     const hours = String(
         Math.floor(timeLeft / 3600)
     ).padStart(2, "0");
@@ -172,35 +177,22 @@ function LimitedTimeDeal() {
                                     {product.description}
                                 </p>
 
-                                <div className="mt-3 flex items-center gap-1">
-
-                                    <span className="text-sm text-yellow-400">
-                                        ★★★★★
-                                    </span>
-
-                                    <span className="text-xs text-text-grey">
-                                        {product.rating}
-                                    </span>
-
-                                </div>
-
                                 <div className="mt-3 flex items-center gap-2">
 
                                     <span className="text-lg font-bold text-ocean-green">
-                                        {product.price}
+                                        ₹{product.price.toLocaleString("en-IN")}
                                     </span>
 
                                     <span className="text-xs text-gray-400 line-through">
-                                        {product.oldPrice}
+                                        ₹{product.oldPrice.toLocaleString("en-IN")}
                                     </span>
-
                                 </div>
 
                                 <Link
-                                    to="/products"
+                                    to={`/product/${product.id}`}
                                     className="mt-4 flex w-full items-center justify-center rounded-full bg-ocean-green px-4 py-2.5 text-xs font-bold text-white transition hover:bg-cyprus"
                                 >
-                                    Add to Cart
+                                    View Deal
                                 </Link>
 
                             </div>

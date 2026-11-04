@@ -1246,6 +1246,12 @@ function ProductDetails() {
                 {formatPrice(price)}
               </span>
 
+              {Boolean(Number(product?.flash_sale_active)) && (
+                <span className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+                  FLASH SALE
+                </span>
+              )}
+
               {regularPrice > price && (
                 <>
                   <span className="text-base text-gray-400 line-through">

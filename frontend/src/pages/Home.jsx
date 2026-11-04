@@ -1,6 +1,5 @@
 import React from "react";
 import HeroSlider from "../components/HeroSlider";
-import PromoSection from "../components/PromoSection";
 import PromoBanners from "../components/PromoBanners";
 import TrendingProducts from "../components/TrendingProducts";
 import ExploreCategories from "../components/ExploreCategories";
@@ -14,7 +13,6 @@ function Home() {
         <main className="bg-white">
             <HeroSlider />
             <PromoBanners />
-            <PromoSection />
             <TrendingProducts />
             <ExploreCategories />
             <BestSellingProducts />

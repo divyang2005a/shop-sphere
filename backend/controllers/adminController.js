@@ -131,7 +131,14 @@ const getProducts = (req, res) => {
       });
     }
 
-    conditions.push("COALESCE(p.sale_price, p.base_price) >= ?");
+    conditions.push(`COALESCE(
+      (SELECT fs.sale_price FROM flash_sales AS fs
+       WHERE fs.product_id = p.id AND fs.status = 'active'
+         AND fs.start_time <= NOW() AND fs.end_time > NOW()
+         AND fs.sold_quantity < fs.stock_limit
+       ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+      COALESCE(p.sale_price, p.base_price)
+    ) >= ?`);
     values.push(Number(min_price));
   }
 
@@ -144,7 +151,14 @@ const getProducts = (req, res) => {
       });
     }
 
-    conditions.push("COALESCE(p.sale_price, p.base_price) <= ?");
+    conditions.push(`COALESCE(
+      (SELECT fs.sale_price FROM flash_sales AS fs
+       WHERE fs.product_id = p.id AND fs.status = 'active'
+         AND fs.start_time <= NOW() AND fs.end_time > NOW()
+         AND fs.sold_quantity < fs.stock_limit
+       ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+      COALESCE(p.sale_price, p.base_price)
+    ) <= ?`);
     values.push(Number(max_price));
   }
 
@@ -178,7 +192,14 @@ const getProducts = (req, res) => {
   const sortColumns = {
     id: "p.id",
     title: "p.title",
-    price: "COALESCE(p.sale_price, p.base_price)",
+    price: `COALESCE(
+      (SELECT fs.sale_price FROM flash_sales AS fs
+       WHERE fs.product_id = p.id AND fs.status = 'active'
+         AND fs.start_time <= NOW() AND fs.end_time > NOW()
+         AND fs.sold_quantity < fs.stock_limit
+       ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+      COALESCE(p.sale_price, p.base_price)
+    )`,
     created_at: "p.created_at",
   };
 
@@ -229,7 +250,20 @@ const getProducts = (req, res) => {
         p.title,
         p.slug,
         p.base_price,
-        p.sale_price,
+        COALESCE(
+          (SELECT fs.sale_price FROM flash_sales AS fs
+           WHERE fs.product_id = p.id AND fs.status = 'active'
+             AND fs.start_time <= NOW() AND fs.end_time > NOW()
+             AND fs.sold_quantity < fs.stock_limit
+           ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+          p.sale_price
+        ) AS sale_price,
+        EXISTS(
+          SELECT 1 FROM flash_sales AS fs
+          WHERE fs.product_id = p.id AND fs.status = 'active'
+            AND fs.start_time <= NOW() AND fs.end_time > NOW()
+            AND fs.sold_quantity < fs.stock_limit
+        ) AS flash_sale_active,
         p.stock_quantity,
         p.stock_status,
         p.status,
@@ -286,7 +320,20 @@ const getProductDetails = (req, res) => {
       p.short_description,
       p.full_description,
       p.base_price,
-      p.sale_price,
+      COALESCE(
+        (SELECT fs.sale_price FROM flash_sales AS fs
+         WHERE fs.product_id = p.id AND fs.status = 'active'
+           AND fs.start_time <= NOW() AND fs.end_time > NOW()
+           AND fs.sold_quantity < fs.stock_limit
+         ORDER BY fs.sale_price ASC, fs.id DESC LIMIT 1),
+        p.sale_price
+      ) AS sale_price,
+      EXISTS(
+        SELECT 1 FROM flash_sales AS fs
+        WHERE fs.product_id = p.id AND fs.status = 'active'
+          AND fs.start_time <= NOW() AND fs.end_time > NOW()
+          AND fs.sold_quantity < fs.stock_limit
+      ) AS flash_sale_active,
       p.discount_percentage,
       p.tax_percentage,
       p.stock_quantity,

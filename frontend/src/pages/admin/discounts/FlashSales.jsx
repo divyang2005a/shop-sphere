@@ -1,189 +1,242 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
+const API_BASE_URL = "http://192.168.1.20:5000/api";
+
+const toFlashSale = (sale) => {
+    const now = Date.now();
+    const start = new Date(sale.start_time).getTime();
+    const end = new Date(sale.end_time).getTime();
+    let status = "Scheduled";
+
+    if (sale.status !== "active") {
+        status = "Inactive";
+    } else if (Number(sale.sold_quantity) >= Number(sale.stock_limit)) {
+        status = "Sold Out";
+    } else if (end <= now) {
+        status = "Ended";
+    } else if (start <= now) {
+        status = "Active";
+    }
+
+    return {
+        id: sale.id,
+        name: sale.name,
+        product_id: sale.product_id,
+        product: sale.product_title,
+        discount: `${Math.round(Number(sale.discount_percentage))}%`,
+        originalPrice: Number(sale.original_price),
+        salePrice: Number(sale.sale_price),
+        stock: Number(sale.stock_limit),
+        sold: Number(sale.sold_quantity),
+        startTime: new Date(sale.start_time).toLocaleString(),
+        endTime: new Date(sale.end_time).toLocaleString(),
+        status,
+    };
+};
 
 function FlashSales() {
-
-    const [flashSales, setFlashSales] = useState([
-        {
-            id: 1,
-            name: "Weekend Flash Sale",
-            product: "Samsung Galaxy S25",
-            discount: "35%",
-            originalPrice: 79999,
-            salePrice: 51999,
-            stock: 25,
-            sold: 18,
-            startTime: "2026-10-10 10:00",
-            endTime: "2026-10-10 22:00",
-            status: "Active",
-        },
-        {
-            id: 2,
-            name: "Fashion Flash Deal",
-            product: "Nike Air Max Shoes",
-            discount: "40%",
-            originalPrice: 12999,
-            salePrice: 7799,
-            stock: 40,
-            sold: 27,
-            startTime: "2026-10-11 09:00",
-            endTime: "2026-10-11 21:00",
-            status: "Scheduled",
-        },
-        {
-            id: 3,
-            name: "Electronics Flash Sale",
-            product: "Sony Wireless Headphones",
-            discount: "30%",
-            originalPrice: 9999,
-            salePrice: 6999,
-            stock: 30,
-            sold: 30,
-            startTime: "2026-10-05 10:00",
-            endTime: "2026-10-05 20:00",
-            status: "Sold Out",
-        },
-        {
-            id: 4,
-            name: "Home Essentials Deal",
-            product: "Philips Air Fryer",
-            discount: "25%",
-            originalPrice: 8999,
-            salePrice: 6749,
-            stock: 50,
-            sold: 42,
-            startTime: "2026-10-12 12:00",
-            endTime: "2026-10-12 23:00",
-            status: "Scheduled",
-        },
-        {
-            id: 5,
-            name: "Beauty Mega Deal",
-            product: "Mamaearth Face Kit",
-            discount: "45%",
-            originalPrice: 2499,
-            salePrice: 1374,
-            stock: 60,
-            sold: 60,
-            startTime: "2026-10-01 10:00",
-            endTime: "2026-10-01 22:00",
-            status: "Ended",
-        },
-    ]);
-
+    const [flashSales, setFlashSales] = useState([]);
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [showForm, setShowForm] = useState(false);
 
     const [formData, setFormData] = useState({
         name: "",
-        product: "",
+        product_id: "",
         discount: "",
         originalPrice: "",
         salePrice: "",
         stock: "",
         startTime: "",
         endTime: "",
-        status: "Scheduled",
     });
 
+    const token = localStorage.getItem("shopsphereToken");
+    const adminHeaders = { Authorization: `Bearer ${token}` };
 
-    const handleChange = (e) => {
+    const loadData = async () => {
+        setLoading(true);
 
-        const { name, value } = e.target;
+        try {
+            const [salesResponse, productsResponse] = await Promise.all([
+                fetch(`${API_BASE_URL}/admin/flash-sales`, {
+                    headers: adminHeaders,
+                }),
+                fetch(`${API_BASE_URL}/admin/products`, {
+                    headers: adminHeaders,
+                }),
+            ]);
+            const [salesData, productsData] = await Promise.all([
+                salesResponse.json(),
+                productsResponse.json(),
+            ]);
 
-        setFormData({
-            ...formData,
-            [name]: value,
-        });
+            if (!salesResponse.ok || !salesData.success) {
+                throw new Error(salesData.message || "Failed to fetch flash sales");
+            }
+            if (!productsResponse.ok || !productsData.success) {
+                throw new Error(productsData.message || "Failed to fetch products");
+            }
+
+            setFlashSales(
+                Array.isArray(salesData.flash_sales)
+                    ? salesData.flash_sales.map(toFlashSale)
+                    : []
+            );
+            setProducts(
+                Array.isArray(productsData.products)
+                    ? productsData.products.filter(
+                          (product) =>
+                              String(product.status).toLowerCase() === "active"
+                      )
+                    : []
+            );
+            setError("");
+        } catch (loadError) {
+            setError(loadError.message || "Unable to load flash sales.");
+        } finally {
+            setLoading(false);
+        }
     };
 
+    useEffect(() => {
+        loadData();
+        // Load once when the admin screen opens.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    const handleAddFlashSale = (e) => {
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        if (name === "product_id") {
+            const product = products.find(
+                (item) => String(item.id) === value
+            );
+            const originalPrice = product
+                ? Number(product.sale_price ?? product.base_price)
+                : "";
+            setFormData((previous) => ({
+                ...previous,
+                product_id: value,
+                originalPrice,
+                salePrice: "",
+                discount: "",
+            }));
+            return;
+        }
 
+        if (name === "salePrice") {
+            const original = Number(formData.originalPrice);
+            const sale = Number(value);
+            setFormData((previous) => ({
+                ...previous,
+                salePrice: value,
+                discount:
+                    original > 0 && sale > 0 && sale < original
+                        ? String(Math.round((1 - sale / original) * 100))
+                        : "",
+            }));
+            return;
+        }
+
+        setFormData((previous) => ({ ...previous, [name]: value }));
+    };
+
+    const handleAddFlashSale = async (e) => {
         e.preventDefault();
 
         if (
             !formData.name ||
-            !formData.product ||
-            !formData.discount ||
+            !formData.product_id ||
             !formData.originalPrice ||
             !formData.salePrice ||
             !formData.stock ||
             !formData.startTime ||
             !formData.endTime
         ) {
-            alert("Please fill all required fields.");
+            setError("Please fill all required fields.");
             return;
         }
 
+        if (Number(formData.salePrice) >= Number(formData.originalPrice)) {
+            setError("Sale price must be lower than the product price.");
+            return;
+        }
+        if (new Date(formData.endTime) <= new Date(formData.startTime)) {
+            setError("End time must be after start time.");
+            return;
+        }
 
-        const newFlashSale = {
-            id: Date.now(),
-            name: formData.name,
-            product: formData.product,
-            discount: `${formData.discount}%`,
-            originalPrice: Number(formData.originalPrice),
-            salePrice: Number(formData.salePrice),
-            stock: Number(formData.stock),
-            sold: 0,
-            startTime: formData.startTime,
-            endTime: formData.endTime,
-            status: formData.status,
-        };
+        setSaving(true);
+        setError("");
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/flash-sales`, {
+                method: "POST",
+                headers: { ...adminHeaders, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: formData.name,
+                    product_id: Number(formData.product_id),
+                    sale_price: Number(formData.salePrice),
+                    stock_limit: Number(formData.stock),
+                    start_time: new Date(formData.startTime).toISOString(),
+                    end_time: new Date(formData.endTime).toISOString(),
+                }),
+            });
+            const result = await response.json();
 
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Failed to create flash sale");
+            }
 
-        setFlashSales([
-            newFlashSale,
-            ...flashSales,
-        ]);
-
-
-        setFormData({
-            name: "",
-            product: "",
-            discount: "",
-            originalPrice: "",
-            salePrice: "",
-            stock: "",
-            startTime: "",
-            endTime: "",
-            status: "Scheduled",
-        });
-
-
-        setShowForm(false);
-
-        alert("Flash sale added successfully.");
+            setFormData({
+                name: "",
+                product_id: "",
+                discount: "",
+                originalPrice: "",
+                salePrice: "",
+                stock: "",
+                startTime: "",
+                endTime: "",
+            });
+            setShowForm(false);
+            await loadData();
+        } catch (saveError) {
+            setError(saveError.message || "Unable to create flash sale.");
+        } finally {
+            setSaving(false);
+        }
     };
 
-
-    const handleDelete = (id) => {
-
-        const confirmDelete = window.confirm(
-            "Are you sure you want to delete this flash sale?"
-        );
-
-        if (!confirmDelete) {
+    const handleDelete = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this flash sale?")) {
             return;
         }
 
-        setFlashSales(
-            flashSales.filter(
-                (sale) => sale.id !== id
-            )
-        );
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/admin/flash-sales/${id}`,
+                { method: "DELETE", headers: adminHeaders }
+            );
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Failed to delete flash sale");
+            }
+            await loadData();
+        } catch (deleteError) {
+            setError(deleteError.message || "Unable to delete flash sale.");
+        }
     };
 
 
     const filteredFlashSales = flashSales.filter((sale) => {
 
         const searchMatch =
-            sale.name
-                .toLowerCase()
-                .includes(search.toLowerCase()) ||
-            sale.product
-                .toLowerCase()
-                .includes(search.toLowerCase());
+            sale.name.toLowerCase().includes(search.toLowerCase()) ||
+            sale.product.toLowerCase().includes(search.toLowerCase());
 
         const statusMatch =
             statusFilter === "All" ||
@@ -275,6 +328,19 @@ function FlashSales() {
 
             </div>
 
+            {error && (
+                <div
+                    role="alert"
+                    className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                    {error}
+                </div>
+            )}
+            {loading && (
+                <p className="mb-5 text-sm text-text-grey">
+                    Loading flash sales...
+                </p>
+            )}
 
             {/* Stats */}
 
@@ -437,6 +503,7 @@ function FlashSales() {
                                 value={formData.name}
                                 onChange={handleChange}
                                 placeholder="e.g. Weekend Flash Sale"
+                                required
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -451,14 +518,23 @@ function FlashSales() {
                                 Product
                             </label>
 
-                            <input
-                                type="text"
-                                name="product"
-                                value={formData.product}
+                            <select
+                                name="product_id"
+                                value={formData.product_id}
                                 onChange={handleChange}
-                                placeholder="Product name"
-                                className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
-                            />
+                                required
+                                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
+                            >
+                                <option value="">Select a product</option>
+                                {products.map((product) => (
+                                    <option key={product.id} value={product.id}>
+                                        {product.title} — ₹
+                                        {Number(
+                                            product.sale_price ?? product.base_price
+                                        ).toLocaleString("en-IN")}
+                                    </option>
+                                ))}
+                            </select>
 
                         </div>
 
@@ -475,8 +551,8 @@ function FlashSales() {
                                 type="number"
                                 name="discount"
                                 value={formData.discount}
-                                onChange={handleChange}
-                                placeholder="e.g. 30"
+                                readOnly
+                                placeholder="Select product and sale price"
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -495,8 +571,8 @@ function FlashSales() {
                                 type="number"
                                 name="originalPrice"
                                 value={formData.originalPrice}
-                                onChange={handleChange}
-                                placeholder="e.g. 9999"
+                                readOnly
+                                placeholder="Select a product"
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -517,6 +593,9 @@ function FlashSales() {
                                 value={formData.salePrice}
                                 onChange={handleChange}
                                 placeholder="e.g. 6999"
+                                min="0.01"
+                                step="0.01"
+                                required
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -537,6 +616,9 @@ function FlashSales() {
                                 value={formData.stock}
                                 onChange={handleChange}
                                 placeholder="e.g. 50"
+                                min="1"
+                                step="1"
+                                required
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -556,6 +638,7 @@ function FlashSales() {
                                 name="startTime"
                                 value={formData.startTime}
                                 onChange={handleChange}
+                                required
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
 
@@ -575,36 +658,10 @@ function FlashSales() {
                                 name="endTime"
                                 value={formData.endTime}
                                 onChange={handleChange}
+                                min={formData.startTime || undefined}
+                                required
                                 className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             />
-
-                        </div>
-
-
-                        {/* Status */}
-
-                        <div>
-
-                            <label className="mb-2 block text-sm font-medium text-cyprus">
-                                Status
-                            </label>
-
-                            <select
-                                name="status"
-                                value={formData.status}
-                                onChange={handleChange}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
-                            >
-
-                                <option value="Scheduled">
-                                    Scheduled
-                                </option>
-
-                                <option value="Active">
-                                    Active
-                                </option>
-
-                            </select>
 
                         </div>
 
@@ -615,9 +672,10 @@ function FlashSales() {
 
                             <button
                                 type="submit"
-                                className="rounded-lg bg-ocean-green px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+                                disabled={saving || products.length === 0}
+                                className="rounded-lg bg-ocean-green px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                Save Flash Sale
+                                {saving ? "Saving..." : "Save Flash Sale"}
                             </button>
 
                             <button
@@ -861,13 +919,6 @@ function FlashSales() {
                                         <div className="flex justify-end gap-2">
 
                                             <button
-                                                className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-aqua-spring hover:text-ocean-green"
-                                                title="Edit"
-                                            >
-                                                <i className="fa-solid fa-pen"></i>
-                                            </button>
-
-                                            <button
                                                 onClick={() =>
                                                     handleDelete(sale.id)
                                                 }
@@ -1055,14 +1106,6 @@ function FlashSales() {
 
 
                         <div className="mt-5 flex gap-2 border-t border-gray-100 pt-4">
-
-                            <button
-                                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-semibold text-cyprus hover:bg-aqua-spring"
-                            >
-                                <i className="fa-solid fa-pen"></i>
-                                Edit
-                            </button>
-
 
                             <button
                                 onClick={() =>

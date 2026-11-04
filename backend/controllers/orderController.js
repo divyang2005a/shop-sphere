@@ -85,6 +85,7 @@ const checkoutSummary = async (req, res) => {
 
       let price = Number(item.sale_price ?? item.base_price);
       let stock = Number(item.product_stock);
+      let flashSaleId = null;
 
       if (item.variant_id !== null) {
         if (String(item.variant_status).toLowerCase() !== "active") {
@@ -98,6 +99,34 @@ const checkoutSummary = async (req, res) => {
 
         if (item.variant_price !== null) {
           price = Number(item.variant_price);
+        }
+      } else {
+        const [flashSales] = await db.promise().query(
+          `SELECT id, sale_price, stock_limit, sold_quantity
+           FROM flash_sales
+           WHERE product_id = ?
+             AND status = 'active'
+             AND start_time <= NOW()
+             AND end_time > NOW()
+             AND sold_quantity < stock_limit
+           ORDER BY sale_price ASC, id DESC
+           LIMIT 1`,
+          [item.product_id],
+        );
+
+        if (flashSales.length) {
+          const flashSale = flashSales[0];
+          const remainingSaleStock =
+            Number(flashSale.stock_limit) - Number(flashSale.sold_quantity);
+          if (quantity > remainingSaleStock) {
+            return res.status(400).json({
+              success: false,
+              message: `Only ${remainingSaleStock} flash-sale unit(s) remain for product ${item.product_id}`,
+            });
+          }
+          price = Number(flashSale.sale_price);
+          stock = Math.min(stock, remainingSaleStock);
+          flashSaleId = flashSale.id;
         }
       }
 
@@ -138,6 +167,7 @@ const checkoutSummary = async (req, res) => {
         title: item.title,
         quantity,
         unit_price: price,
+        flash_sale_id: flashSaleId,
         subtotal: lineSubtotal,
         tax: itemTax,
       });
@@ -783,6 +813,7 @@ const createOrder = async (req, res) => {
       let price = Number(item.sale_price ?? item.base_price);
       let availableStock = Number(item.product_stock);
       let sku = item.sku;
+      let flashSaleId = null;
 
       if (item.variant_id !== null) {
         const [variants] = await connection.query(
@@ -827,6 +858,34 @@ const createOrder = async (req, res) => {
         }
 
         availableStock = Number(products[0].stock_quantity);
+
+        const [flashSales] = await connection.query(
+          `SELECT id, sale_price, stock_limit, sold_quantity
+           FROM flash_sales
+           WHERE product_id = ?
+             AND status = 'active'
+             AND start_time <= NOW()
+             AND end_time > NOW()
+             AND sold_quantity < stock_limit
+           ORDER BY sale_price ASC, id DESC
+           LIMIT 1
+           FOR UPDATE`,
+          [item.product_id],
+        );
+
+        if (flashSales.length) {
+          const flashSale = flashSales[0];
+          const remainingSaleStock =
+            Number(flashSale.stock_limit) - Number(flashSale.sold_quantity);
+          if (itemQuantity > remainingSaleStock) {
+            throw new Error(
+              `Only ${remainingSaleStock} flash-sale unit(s) remain for product ${item.product_id}`,
+            );
+          }
+          price = Number(flashSale.sale_price);
+          availableStock = Math.min(availableStock, remainingSaleStock);
+          flashSaleId = flashSale.id;
+        }
       }
 
       if (!Number.isFinite(price) || price < 0) {
@@ -868,6 +927,7 @@ const createOrder = async (req, res) => {
         product_name: item.title,
         quantity: itemQuantity,
         unit_price: price,
+        flash_sale_id: flashSaleId,
         tax: lineTax,
         total: Number((lineSubtotal + lineTax).toFixed(2)),
       });
@@ -1304,6 +1364,25 @@ const createOrder = async (req, res) => {
           item.total,
         ],
       );
+
+      if (item.flash_sale_id !== null) {
+        const [flashSaleUpdate] = await connection.query(
+          `UPDATE flash_sales
+           SET sold_quantity = sold_quantity + ?
+           WHERE id = ?
+             AND status = 'active'
+             AND start_time <= NOW()
+             AND end_time > NOW()
+             AND sold_quantity + ? <= stock_limit`,
+          [item.quantity, item.flash_sale_id, item.quantity],
+        );
+
+        if (flashSaleUpdate.affectedRows !== 1) {
+          throw new Error(
+            `Flash sale stock is no longer available for product ${item.product_id}`,
+          );
+        }
+      }
 
       if (item.variant_id !== null) {
         const [updateResult] = await connection.query(
