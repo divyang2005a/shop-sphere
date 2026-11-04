@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = "http://192.168.1.20:5000/api";
 
 const ORDER_STATUSES = [
     "confirmed",

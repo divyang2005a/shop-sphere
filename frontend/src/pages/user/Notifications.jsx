@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-const API_URL = "http://localhost:5000/api/notifications";
+const API_URL = "http://192.168.1.20:5000/api/notifications";
 
 function Notifications({
     mode = "page",

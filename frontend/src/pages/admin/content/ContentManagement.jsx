@@ -22,7 +22,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
-const API_BASE = "http://localhost:5000/api/admin";
+const API_BASE = "http://192.168.1.20:5000/api/admin";
 const ITEMS_PER_PAGE = 5;
 
 const emptyBanner = {

@@ -23,7 +23,7 @@ function AdminDashboard() {
                 }
 
                 const response = await fetch(
-                    "http://localhost:5000/api/admin/dashboard",
+                    "http://192.168.1.20:5000/api/admin/dashboard",
                     {
                         method: "GET",
                         headers: {

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-const API_BASE_URL = "http://localhost:5000/api";
-const API_SERVER_URL = "http://localhost:5000";
+const API_BASE_URL = "http://192.168.1.20:5000/api";
+const API_SERVER_URL = "http://192.168.1.20:5000";
 
 // Customer profile image with initials fallback
 function CustomerAvatar({ customer, size = "h-11 w-11" }) {

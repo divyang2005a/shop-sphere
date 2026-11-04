@@ -71,7 +71,7 @@ function UserDashboardSidebar({ mobileOpen, setMobileOpen }) {
 
             // Call Logout API
             const response = await fetch(
-                "http://localhost:5000/api/auth/logout",
+                "http://192.168.1.20:5000/api/auth/logout",
                 {
                     method: "POST",
                     headers: {

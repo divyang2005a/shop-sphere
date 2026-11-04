@@ -6,7 +6,7 @@ import React, {
 } from "react";
 import { Link } from "react-router-dom";
 
-const API_BASE_URL = "http://localhost:5000/api/admin";
+const API_BASE_URL = "http://192.168.1.20:5000/api/admin";
 
 // Format date
 function formatDate(date) {

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import UserDashboardLayout from "../layouts/UserDashboardLayout";
 
-const API_BASE_URL = "http://localhost:5000/api";
-const SERVER_URL = "http://localhost:5000";
+const API_BASE_URL = "http://192.168.1.20:5000/api";
+const SERVER_URL = "http://192.168.1.20:5000";
 
 function UserDashboard() {
     const [user, setUser] = useState(() => {

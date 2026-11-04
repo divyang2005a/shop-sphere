@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserDashboardLayout from "../layouts/UserDashboardLayout";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = "http://192.168.1.20:5000";
 
 const ADDRESSES_URL = `${API_BASE_URL}/api/addresses`;
 const CHECKOUT_SUMMARY_URL = `${API_BASE_URL}/api/orders/checkout-summary`;

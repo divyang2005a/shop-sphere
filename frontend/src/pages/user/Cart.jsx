@@ -3,11 +3,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
 
-const API_URL = "http://localhost:5000/api/cart";
-const IMAGE_API_URL = "http://localhost:5000/api/products";
+const API_URL = "http://192.168.1.20:5000/api/cart";
+const IMAGE_API_URL = "http://192.168.1.20:5000/api/products";
 const CHECKOUT_SUMMARY_URL =
-    "http://localhost:5000/api/orders/checkout-summary";
-const SERVER_URL = "http://localhost:5000";
+    "http://192.168.1.20:5000/api/orders/checkout-summary";
+const SERVER_URL = "http://192.168.1.20:5000";
 
 // Format price
 const formatPrice = (price) =>

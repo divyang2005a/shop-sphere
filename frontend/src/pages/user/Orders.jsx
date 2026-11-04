@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
 
-const API_URL = "http://localhost:5000/api/orders";
-const SHIPMENTS_API = "http://localhost:5000/api/shipments";
+const API_URL = "http://192.168.1.20:5000/api/orders";
+const SHIPMENTS_API = "http://192.168.1.20:5000/api/shipments";
 const ITEMS_PER_PAGE = 5;
 
 function normalizeOrder(order) {

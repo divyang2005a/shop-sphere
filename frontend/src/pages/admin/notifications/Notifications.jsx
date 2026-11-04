@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-const API_URL = "http://localhost:5000/api/admin/notifications";
+const API_URL = "http://192.168.1.20:5000/api/admin/notifications";
 const PAGE_SIZE = 5;
 
 const INITIAL_FORM = {
