@@ -69,13 +69,6 @@ function TrendingProducts() {
 
                     </div>
 
-                    <Link
-                        to="/products"
-                        className="rounded-full border border-cyprus px-4 py-2 text-xs font-bold text-cyprus transition hover:bg-cyprus hover:text-white sm:px-5"
-                    >
-                        View All
-                    </Link>
-
                 </div>
 
                 <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
