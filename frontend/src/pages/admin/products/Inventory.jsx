@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from "react";
+import ProductPagination from "./ProductPagination";
 
 const API = "http://192.168.1.20:5000/api/admin";
 const SERVER_URL = "http://192.168.1.20:5000";
+const PRODUCTS_PER_PAGE = 10;
 
 function Inventory() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -231,6 +234,15 @@ function Inventory() {
         .includes(searchText)
     );
   });
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
+  );
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const currentProducts = filteredProducts.slice(
+    (safeCurrentPage - 1) * PRODUCTS_PER_PAGE,
+    safeCurrentPage * PRODUCTS_PER_PAGE
+  );
 
   // Summary values
   const totalProducts = products.length;
@@ -365,7 +377,10 @@ function Inventory() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setCurrentPage(1);
+                setSearch(e.target.value);
+              }}
               placeholder="Search product or SKU..."
               className="h-11 w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm outline-none transition focus:border-ocean-green focus:ring-2 focus:ring-ocean-green/20"
             />
@@ -441,7 +456,7 @@ function Inventory() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {filteredProducts.map((product) => {
+                {currentProducts.map((product) => {
                   const stock = getStock(product);
                   const status = getStatus(product);
                   const name = getProductName(product);
@@ -571,11 +586,11 @@ function Inventory() {
             <p>
               Showing{" "}
               <span className="font-semibold text-gray-700">
-                {filteredProducts.length}
+                {currentProducts.length}
               </span>{" "}
               of{" "}
               <span className="font-semibold text-gray-700">
-                {products.length}
+                {filteredProducts.length}
               </span>{" "}
               products
             </p>
@@ -584,6 +599,16 @@ function Inventory() {
               Inventory Management
             </p>
           </div>
+        )}
+
+        {!loading && filteredProducts.length > 0 && (
+          <ProductPagination
+            page={safeCurrentPage}
+            totalPages={totalPages}
+            totalItems={filteredProducts.length}
+            pageSize={PRODUCTS_PER_PAGE}
+            onPageChange={setCurrentPage}
+          />
         )}
 
       </div>

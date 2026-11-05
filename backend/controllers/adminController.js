@@ -105,7 +105,7 @@ const getProducts = (req, res) => {
     values.push(Number(brand_id));
   }
 
-  // Search by product title, SKU or product code
+  // Search product details and catalog metadata
   if (search !== undefined) {
     if (typeof search !== "string" || !search.trim()) {
       return res.status(400).json({
@@ -117,9 +117,11 @@ const getProducts = (req, res) => {
     const term = `%${search.trim()}%`;
 
     conditions.push(
-      "(p.title LIKE ? OR p.sku LIKE ? OR p.product_code LIKE ?)",
+      "(p.title LIKE ? OR p.sku LIKE ? OR p.product_code LIKE ? " +
+        "OR p.short_description LIKE ? OR c.name LIKE ? OR c.slug LIKE ? " +
+        "OR b.name LIKE ?)",
     );
-    values.push(term, term, term);
+    values.push(term, term, term, term, term, term, term);
   }
 
   // Minimum price
@@ -230,6 +232,7 @@ const getProducts = (req, res) => {
     SELECT COUNT(*) AS total
     FROM products AS p
     LEFT JOIN categories AS c ON c.id = p.category_id
+    LEFT JOIN brands AS b ON b.id = p.brand_id
     ${whereClause}
   `;
 
@@ -245,6 +248,8 @@ const getProducts = (req, res) => {
         p.id,
         p.category_id,
         p.brand_id,
+        c.name AS category_name,
+        b.name AS brand_name,
         p.sku,
         p.product_code,
         p.title,
@@ -272,6 +277,7 @@ const getProducts = (req, res) => {
         p.updated_at
       FROM products AS p
       LEFT JOIN categories AS c ON c.id = p.category_id
+      LEFT JOIN brands AS b ON b.id = p.brand_id
       ${whereClause}
       ORDER BY ${sortColumns[selectedSort]} ${selectedOrder.toUpperCase()}
       LIMIT ? OFFSET ?

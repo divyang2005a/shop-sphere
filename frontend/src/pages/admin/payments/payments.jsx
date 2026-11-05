@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
+const PAGE_SIZE = 10;
 
 function Payments() {
     const [payments, setPayments] = useState([]);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [methodFilter, setMethodFilter] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -290,6 +293,12 @@ function Payments() {
             );
         });
     }, [payments, search, statusFilter, methodFilter]);
+    const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentPayments = filteredPayments.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     const paymentMethods = [
         ...new Set(
@@ -312,6 +321,7 @@ function Payments() {
     };
 
     const clearFilters = () => {
+        setCurrentPage(1);
         setSearch("");
         setStatusFilter("All");
         setMethodFilter("All");
@@ -428,9 +438,10 @@ function Payments() {
                         <input
                             type="text"
                             value={search}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                setCurrentPage(1);
                                 setSearch(event.target.value)
-                            }
+                            }}
                             placeholder="Search transaction, order or customer..."
                             className="w-full rounded-lg border border-gray-200 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-ocean-green focus:ring-2 focus:ring-ocean-green/10"
                         />
@@ -438,9 +449,10 @@ function Payments() {
 
                     <select
                         value={statusFilter}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                            setCurrentPage(1);
                             setStatusFilter(event.target.value)
-                        }
+                        }}
                         className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
                     >
                         <option value="All">All Payment Statuses</option>
@@ -453,9 +465,10 @@ function Payments() {
 
                     <select
                         value={methodFilter}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                            setCurrentPage(1);
                             setMethodFilter(event.target.value)
-                        }
+                        }}
                         className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
                     >
                         <option value="All">All Payment Methods</option>
@@ -521,7 +534,7 @@ function Payments() {
                                     </thead>
 
                                     <tbody className="divide-y divide-gray-100">
-                                        {filteredPayments.map((payment) => (
+                                        {currentPayments.map((payment) => (
                                             <tr
                                                 key={payment.id}
                                                 className="transition hover:bg-gray-50"
@@ -607,7 +620,7 @@ function Payments() {
 
                     {/* Mobile and Tablet Cards */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:hidden">
-                        {filteredPayments.map((payment) => (
+                        {currentPayments.map((payment) => (
                             <div
                                 key={payment.id}
                                 className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
@@ -691,6 +704,17 @@ function Payments() {
                             </div>
                         ))}
                     </div>
+
+                    {filteredPayments.length > 0 && (
+                        <Pagination
+                            page={safeCurrentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredPayments.length}
+                            pageSize={PAGE_SIZE}
+                            itemLabel="payments"
+                            onPageChange={setCurrentPage}
+                        />
+                    )}
 
                     {/* Empty State */}
                     {filteredPayments.length === 0 && (

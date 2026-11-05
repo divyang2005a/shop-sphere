@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
 
+const ITEMS_PER_PAGE = 3;
+
 function PaymentHistory() {
     const [payments] = useState([
         {
@@ -43,6 +45,7 @@ function PaymentHistory() {
 
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
     const [selectedPayment, setSelectedPayment] = useState(null);
 
     // Format currency
@@ -117,6 +120,24 @@ function PaymentHistory() {
             return matchesSearch && matchesStatus;
         });
     }, [payments, search, statusFilter]);
+
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredPayments.length / ITEMS_PER_PAGE)
+    );
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedPayments = filteredPayments.slice(
+        (safePage - 1) * ITEMS_PER_PAGE,
+        safePage * ITEMS_PER_PAGE
+    );
+    const firstVisiblePayment =
+        filteredPayments.length === 0
+            ? 0
+            : (safePage - 1) * ITEMS_PER_PAGE + 1;
+    const lastVisiblePayment = Math.min(
+        safePage * ITEMS_PER_PAGE,
+        filteredPayments.length
+    );
 
     // Status styles
     const getStatusStyle = (status) => {
@@ -230,7 +251,10 @@ function PaymentHistory() {
                                 type="text"
                                 placeholder="Search transaction or order ID..."
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-ocean-green focus:bg-white"
                             />
                         </div>
@@ -240,7 +264,10 @@ function PaymentHistory() {
 
                             <select
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
+                                onChange={(e) => {
+                                    setStatusFilter(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-cyprus outline-none focus:border-ocean-green sm:w-auto"
                             >
                                 <option value="All">All Payments</option>
@@ -266,7 +293,7 @@ function PaymentHistory() {
 
                         {/* TABLE BODY */}
                         {filteredPayments.length > 0 ? (
-                            filteredPayments.map((payment) => (
+                            paginatedPayments.map((payment) => (
                                 <div
                                     key={payment.id}
                                     className="grid grid-cols-2 gap-4 border-t border-gray-100 px-4 py-5 first:border-t-0 sm:grid-cols-3 lg:grid-cols-6 lg:items-center lg:px-5"
@@ -380,6 +407,7 @@ function PaymentHistory() {
                                     onClick={() => {
                                         setSearch("");
                                         setStatusFilter("All");
+                                        setCurrentPage(1);
                                     }}
                                     className="mt-4 rounded-full bg-ocean-green px-5 py-2 text-xs font-bold text-white transition hover:bg-cyprus"
                                 >
@@ -390,9 +418,49 @@ function PaymentHistory() {
                     </div>
 
                     {/* RESULT COUNT */}
-                    <p className="mt-3 text-xs text-text-grey">
-                        Showing {filteredPayments.length} of {payments.length} transactions
-                    </p>
+                    <div className="mt-3 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                        <p className="text-xs text-text-grey">
+                            Showing {firstVisiblePayment}-{lastVisiblePayment} of{" "}
+                            {filteredPayments.length} filtered transactions
+                            {" "}({payments.length} total)
+                        </p>
+
+                        {totalPages > 1 && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm text-text-grey">
+                                    Page {safePage} of {totalPages}
+                                </span>
+
+                                <button
+                                    type="button"
+                                    disabled={safePage <= 1}
+                                    onClick={() =>
+                                        setCurrentPage((page) =>
+                                            Math.max(1, page - 1)
+                                        )
+                                    }
+                                    className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-cyprus transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    <i className="fa-solid fa-arrow-left" />
+                                    Previous
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={safePage >= totalPages}
+                                    onClick={() =>
+                                        setCurrentPage((page) =>
+                                            Math.min(totalPages, page + 1)
+                                        )
+                                    }
+                                    className="inline-flex items-center gap-2 rounded-xl bg-ocean-green px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Next
+                                    <i className="fa-solid fa-arrow-right" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </section>
 
                 {/* PAYMENT DETAILS MODAL */}

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
+import OrdersPagination from "./OrdersPagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
+const ORDERS_PER_PAGE = 10;
 
 const ORDER_STATUSES = [
     "confirmed",
@@ -14,6 +16,7 @@ const ORDER_STATUSES = [
 function ProcessingOrders() {
     const [search, setSearch] = useState("");
     const [paymentStatus, setPaymentStatus] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -391,6 +394,15 @@ function ProcessingOrders() {
             order.payment === paymentStatus
         );
     });
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)
+    );
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentOrders = filteredOrders.slice(
+        (safeCurrentPage - 1) * ORDERS_PER_PAGE,
+        safeCurrentPage * ORDERS_PER_PAGE
+    );
 
     const paidOrders = orders.filter(
         (order) => order.payment === "Paid"
@@ -524,9 +536,10 @@ function ProcessingOrders() {
                             <input
                                 type="text"
                                 value={search}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                    setCurrentPage(1);
                                     setSearch(event.target.value)
-                                }
+                                }}
                                 placeholder="Order ID, customer, email..."
                                 className="w-full bg-transparent text-sm text-cyprus outline-none placeholder:text-text-grey"
                             />
@@ -540,9 +553,10 @@ function ProcessingOrders() {
 
                         <select
                             value={paymentStatus}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                setCurrentPage(1);
                                 setPaymentStatus(event.target.value)
-                            }
+                            }}
                             className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-cyprus outline-none focus:border-ocean-green"
                         >
                             <option value="All">All Payments</option>
@@ -586,7 +600,7 @@ function ProcessingOrders() {
 
                         <tbody className="divide-y divide-gray-100">
                             {!loading &&
-                                filteredOrders.map((order) => (
+                                currentOrders.map((order) => (
                                     <tr
                                         key={order.id}
                                         className="transition hover:bg-gray-50"
@@ -683,7 +697,7 @@ function ProcessingOrders() {
                 )}
 
                 {!loading &&
-                    filteredOrders.map((order) => (
+                    currentOrders.map((order) => (
                         <div
                             key={order.id}
                             className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
@@ -787,6 +801,16 @@ function ProcessingOrders() {
                     </div>
                 )}
             </div>
+
+            {!loading && !error && (
+                <OrdersPagination
+                    page={safeCurrentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredOrders.length}
+                    pageSize={ORDERS_PER_PAGE}
+                    onPageChange={setCurrentPage}
+                />
+            )}
 
             {/* Order Details Modal */}
             {showDetails && (

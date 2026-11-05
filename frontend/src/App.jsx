@@ -171,20 +171,7 @@ return (
             {/* ALL PRODUCTS */}
             <Route
                 path="/products"
-                element={
-                    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-aqua-spring px-4 text-center">
-                        <h1 className="text-3xl font-bold text-cyprus">
-                            Products Page
-                        </h1>
-
-                        <Link
-                            to="/categories"
-                            className="text-sm font-semibold text-ocean-green hover:underline"
-                        >
-                            Browse Categories
-                        </Link>
-                    </div>
-                }
+                element={<CategoryPage key={location.search} />}
             />
 
             {/* DYNAMIC CATEGORY PAGE */}

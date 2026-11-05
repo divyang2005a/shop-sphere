@@ -9,6 +9,17 @@ function Navbar() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const handleSearch = (event) => {
+        event.preventDefault();
+        const query = searchTerm.trim();
+        navigate(
+            query
+                ? `/products?search=${encodeURIComponent(query)}`
+                : "/products"
+        );
+    };
 
     const categories = [
         { name: "For You", slug: "for-you", icon: "fa-solid fa-bag-shopping" },
@@ -179,21 +190,29 @@ function Navbar() {
                     </div>
 
                     {/* SEARCH */}
-                    <div className="hidden min-w-0 flex-1 rounded-full bg-aqua-spring p-1 md:flex md:max-w-[340px]">
+                    <form
+                        onSubmit={handleSearch}
+                        role="search"
+                        className="hidden min-w-0 flex-1 rounded-full bg-aqua-spring p-1 md:flex md:max-w-[340px]"
+                    >
                         <input
                             type="text"
                             placeholder="What are you looking for?"
                             aria-label="Search products"
+                            value={searchTerm}
+                            onChange={(event) =>
+                                setSearchTerm(event.target.value)
+                            }
                             className="min-w-0 w-full bg-transparent px-3 text-xs text-cyprus outline-none placeholder:text-gray-400 sm:px-4"
                         />
 
                         <button
-                            type="button"
+                            type="submit"
                             className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-medium text-cyprus shadow-sm sm:px-5"
                         >
                             Search
                         </button>
-                    </div>
+                    </form>
 
                     {/* WISHLIST, CART AND LOGIN / PROFILE */}
                     <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -277,6 +296,28 @@ function Navbar() {
                     </div>
                 </div>
             </div>
+
+            <form
+                onSubmit={handleSearch}
+                role="search"
+                className="flex items-center gap-1 border-b border-gray-100 bg-white px-3 py-2 md:hidden"
+            >
+                <input
+                    type="search"
+                    placeholder="What are you looking for?"
+                    aria-label="Search products"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    className="min-w-0 flex-1 rounded-full bg-aqua-spring px-4 py-2.5 text-sm text-cyprus outline-none placeholder:text-gray-400"
+                />
+                <button
+                    type="submit"
+                    aria-label="Search"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ocean-green text-white"
+                >
+                    <i className="fa-solid fa-magnifying-glass" />
+                </button>
+            </form>
 
             {/* CATEGORY MENU */}
             <div className="w-full border-b border-gray-200 bg-white">

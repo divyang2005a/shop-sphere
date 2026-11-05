@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
+import ProductPagination from "./ProductPagination";
 
 const BASE_URL = "http://192.168.1.20:5000";
 const API_URL = `${BASE_URL}/api/admin/brands`;
+const ITEMS_PER_PAGE = 10;
 
 function Brands() {
   const [brands, setBrands] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -24,6 +27,15 @@ function Brands() {
   });
 
   const token = localStorage.getItem("shopsphereToken");
+  const totalPages = Math.max(
+    1,
+    Math.ceil(brands.length / ITEMS_PER_PAGE)
+  );
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const currentBrands = brands.slice(
+    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+    safeCurrentPage * ITEMS_PER_PAGE
+  );
 
   // Automatically generate slug
   const generateSlug = (name) => {
@@ -226,6 +238,7 @@ function Brands() {
       resetForm();
       setSuccess(message);
 
+      setCurrentPage(1);
       await fetchBrands();
     } catch (err) {
       setError(err.message || "Something went wrong");
@@ -609,7 +622,7 @@ function Brands() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {brands.map((brand) => {
+                  {currentBrands.map((brand) => {
                     const brandImage = brand.logo || brand.image;
 
                     const isActive =
@@ -696,6 +709,16 @@ function Brands() {
                 </tbody>
               </table>
             </div>
+          )}
+          {!loading && brands.length > 0 && (
+            <ProductPagination
+              page={safeCurrentPage}
+              totalPages={totalPages}
+              totalItems={brands.length}
+              pageSize={ITEMS_PER_PAGE}
+              itemLabel="brands"
+              onPageChange={setCurrentPage}
+            />
           )}
         </div>
       </div>

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/admin/shipping-methods";
+const PAGE_SIZE = 10;
 
 const EMPTY_FORM = {
     name: "",
@@ -16,6 +18,7 @@ function ShippingMethods() {
 
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -277,6 +280,12 @@ function ShippingMethods() {
             return matchesSearch && matchesStatus;
         });
     }, [methods, search, statusFilter]);
+    const totalPages = Math.max(1, Math.ceil(filteredMethods.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentMethods = filteredMethods.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     // Statistics
     const stats = useMemo(() => {
@@ -587,16 +596,20 @@ function ShippingMethods() {
                 <input
                     type="text"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                        setCurrentPage(1);
+                        setSearch(event.target.value);
+                    }}
                     placeholder="Search shipping methods..."
                     className="min-w-0 flex-1 rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-cyprus"
                 />
 
                 <select
                     value={statusFilter}
-                    onChange={(event) =>
-                        setStatusFilter(event.target.value)
-                    }
+                    onChange={(event) => {
+                        setCurrentPage(1);
+                        setStatusFilter(event.target.value);
+                    }}
                     className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyprus sm:w-52"
                 >
                     <option value="all">All Statuses</option>
@@ -666,7 +679,7 @@ function ShippingMethods() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredMethods.map((method) => (
+                                    {currentMethods.map((method) => (
                                         <tr
                                             key={method.id}
                                             className="transition hover:bg-gray-50"
@@ -748,7 +761,7 @@ function ShippingMethods() {
 
                         {/* Mobile / Tablet Cards */}
                         <div className="grid grid-cols-1 gap-4 p-4 lg:hidden">
-                            {filteredMethods.map((method) => (
+                            {currentMethods.map((method) => (
                                 <div
                                     key={method.id}
                                     className="rounded-xl border border-gray-200 p-4 transition hover:border-gray-300 hover:shadow-sm"
@@ -836,6 +849,16 @@ function ShippingMethods() {
                             ))}
                         </div>
                     </>
+                )}
+                {!loading && !error && filteredMethods.length > 0 && (
+                    <Pagination
+                        page={safeCurrentPage}
+                        totalPages={totalPages}
+                        totalItems={filteredMethods.length}
+                        pageSize={PAGE_SIZE}
+                        itemLabel="shipping methods"
+                        onPageChange={setCurrentPage}
+                    />
                 )}
             </div>
         </div>

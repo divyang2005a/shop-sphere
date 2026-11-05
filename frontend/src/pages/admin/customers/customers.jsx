@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
 const API_SERVER_URL = "http://192.168.1.20:5000";
+const PAGE_SIZE = 10;
 
 // Customer profile image with initials fallback
 function CustomerAvatar({ customer, size = "h-11 w-11" }) {
@@ -49,6 +51,7 @@ function Customers() {
     const [customers, setCustomers] = useState([]);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [updatingId, setUpdatingId] = useState(null);
@@ -164,6 +167,12 @@ function Customers() {
             return matchesSearch && matchesStatus;
         });
     }, [customers, search, statusFilter]);
+    const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentCustomers = filteredCustomers.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     // Summary cards
     const totalCustomers = customers.length;
@@ -405,9 +414,10 @@ function Customers() {
                             <input
                                 type="search"
                                 value={search}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                    setCurrentPage(1);
                                     setSearch(event.target.value)
-                                }
+                                }}
                                 placeholder="Search name, email, mobile..."
                                 aria-label="Search customers"
                                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-ocean-green sm:w-72"
@@ -415,9 +425,10 @@ function Customers() {
 
                             <select
                                 value={statusFilter}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                    setCurrentPage(1);
                                     setStatusFilter(event.target.value)
-                                }
+                                }}
                                 aria-label="Filter customers by status"
                                 className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
                             >
@@ -481,7 +492,7 @@ function Customers() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredCustomers.map((customer) => (
+                                    {currentCustomers.map((customer) => (
                                         <tr
                                             key={customer.id}
                                             className="transition hover:bg-gray-50/70"
@@ -565,7 +576,7 @@ function Customers() {
 
                         {/* Mobile cards */}
                         <div className="space-y-3 p-4 lg:hidden">
-                            {filteredCustomers.map((customer) => (
+                            {currentCustomers.map((customer) => (
                                 <div
                                     key={customer.id}
                                     className="rounded-xl border border-gray-100 p-4"
@@ -633,6 +644,14 @@ function Customers() {
                                 </div>
                             ))}
                         </div>
+                        <Pagination
+                            page={safeCurrentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredCustomers.length}
+                            pageSize={PAGE_SIZE}
+                            itemLabel="customers"
+                            onPageChange={setCurrentPage}
+                        />
                     </>
                 )}
             </div>

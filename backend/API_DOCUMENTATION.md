@@ -62,6 +62,10 @@ Prefix: `/api/products`
 | GET | `/:productId/images` | Get a product's images for the storefront |
 | GET | `/:productId` | Get product details, including its images |
 
+The product listing endpoint accepts `search` to match product titles, SKUs,
+product codes, short descriptions, category names/slugs, and brand names. It
+also supports category, brand, price, sorting, and pagination filters.
+
 The product listing and detail routes do not declare authentication middleware in the route definitions.
 
 ## 6. Customer Addresses
@@ -235,8 +239,9 @@ Admin-only endpoints under `/api/admin`:
 | PATCH | `/delivery-areas/:id` | Update a delivery area or deactivate it |
 
 Checkout requires the selected shipping address pincode to match one active
-delivery area. The area's shipping fee applies, with free shipping at or above
-its optional threshold. For existing databases, apply
+delivery area. The delivery-area fee and selected shipping method's price are
+both included in the shipping total; the area's fee is waived at or above its
+optional free-shipping threshold. For existing databases, apply
 `database/migrations/20261027_add_shipping_zone_to_orders.sql` once.
 
 Shipping method requests accept both database fields (`description`, `price`,

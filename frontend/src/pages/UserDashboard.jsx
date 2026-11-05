@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import UserDashboardLayout from "../layouts/UserDashboardLayout";
+import Pagination from "../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
 const SERVER_URL = "http://192.168.1.20:5000";
@@ -21,6 +22,8 @@ function UserDashboard() {
     const [wishlistItems, setWishlistItems] = useState([]);
     const [products, setProducts] = useState([]);
     const [recentlyViewed, setRecentlyViewed] = useState([]);
+    const [recentOrdersPage, setRecentOrdersPage] = useState(1);
+    const [recentlyViewedPage, setRecentlyViewedPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(""); 
@@ -164,6 +167,7 @@ function UserDashboard() {
                 }
 
                 // Orders API: { success: true, data: [...] }
+                setRecentOrdersPage(1);
                 setOrders(
                     Array.isArray(ordersData.data)
                         ? ordersData.data
@@ -214,6 +218,7 @@ function UserDashboard() {
                     }
                 }
 
+                setRecentlyViewedPage(1);
                 setRecentlyViewed(viewedProducts);
             } catch (err) {
                 if (isMounted) {
@@ -294,7 +299,7 @@ function UserDashboard() {
             title: "Shop Products",
             description: "Explore our latest products",
             icon: "fa-solid fa-bag-shopping",
-            link: "/products",
+            link: "/",
         },
         {
             title: "My Orders",
@@ -316,13 +321,12 @@ function UserDashboard() {
         },
     ];
 
-    // Recent Orders: latest three orders
+    // Recent Orders
     const recentOrders = [...orders]
         .sort(
             (a, b) =>
                 new Date(b.created_at) - new Date(a.created_at)
         )
-        .slice(0, 3)
         .map((order) => ({
             id: order.order_number || `#${order.id}`,
             product: `Order #${order.id}`,
@@ -373,8 +377,29 @@ function UserDashboard() {
                     ? `/products/${product.slug}`
                     : `/products/${productId}`,
             };
-        })
-        .slice(0, 3);
+        });
+
+    const pageSize = 10;
+    const recentOrdersTotalPages = Math.ceil(recentOrders.length / pageSize);
+    const recentlyViewedTotalPages = Math.ceil(
+        normalizedRecentlyViewed.length / pageSize
+    );
+    const currentRecentOrdersPage = Math.min(
+        recentOrdersPage,
+        Math.max(1, recentOrdersTotalPages)
+    );
+    const currentRecentlyViewedPage = Math.min(
+        recentlyViewedPage,
+        Math.max(1, recentlyViewedTotalPages)
+    );
+    const paginatedRecentOrders = recentOrders.slice(
+        (currentRecentOrdersPage - 1) * pageSize,
+        currentRecentOrdersPage * pageSize
+    );
+    const paginatedRecentlyViewed = normalizedRecentlyViewed.slice(
+        (currentRecentlyViewedPage - 1) * pageSize,
+        currentRecentlyViewedPage * pageSize
+    );
 
     // Order status styles
     const getStatusStyle = (status) => {
@@ -582,7 +607,7 @@ function UserDashboard() {
                                 </div>
 
                                 {recentOrders.length > 0 ? (
-                                    recentOrders.map((order) => (
+                                    paginatedRecentOrders.map((order) => (
                                         <div
                                             key={order.id}
                                             className="grid grid-cols-2 gap-3 border-b border-gray-100 px-5 py-4 last:border-b-0 sm:grid-cols-3 md:grid-cols-5 md:items-center"
@@ -662,6 +687,14 @@ function UserDashboard() {
                                         </Link>
                                     </div>
                                 )}
+                                <Pagination
+                                    page={currentRecentOrdersPage}
+                                    totalPages={recentOrdersTotalPages}
+                                    totalItems={recentOrders.length}
+                                    pageSize={pageSize}
+                                    itemLabel="orders"
+                                    onPageChange={setRecentOrdersPage}
+                                />
                             </div>
                         </section>
 
@@ -678,12 +711,6 @@ function UserDashboard() {
                                     </p>
                                 </div>
 
-                                <Link
-                                    to="/products"
-                                    className="text-xs font-bold text-ocean-green hover:text-cyprus"
-                                >
-                                    View More →
-                                </Link>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -768,7 +795,7 @@ function UserDashboard() {
 
                             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {normalizedRecentlyViewed.length > 0 ? (
-                                    normalizedRecentlyViewed.map((product) => (
+                                    paginatedRecentlyViewed.map((product) => (
                                         <Link
                                             key={product.id}
                                             to={product.link}
@@ -821,6 +848,14 @@ function UserDashboard() {
                                     </div>
                                 )}
                             </div>
+                            <Pagination
+                                page={currentRecentlyViewedPage}
+                                totalPages={recentlyViewedTotalPages}
+                                totalItems={normalizedRecentlyViewed.length}
+                                pageSize={pageSize}
+                                itemLabel="products"
+                                onPageChange={setRecentlyViewedPage}
+                            />
                         </section>
                     </>
                 )}

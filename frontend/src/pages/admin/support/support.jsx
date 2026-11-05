@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api/support";
+const TICKETS_PER_PAGE = 10;
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
@@ -166,7 +168,7 @@ function Support() {
 
       const query = new URLSearchParams({
         page: String(page),
-        limit: "20",
+        limit: String(TICKETS_PER_PAGE),
         status: statusFilter,
       });
 
@@ -176,15 +178,18 @@ function Support() {
 
       const ticketData = response.data?.tickets || [];
       const pageData = response.data?.pagination || {};
+      const totalPages = Number(pageData.total_pages) || 0;
+      const safePage = Math.min(page, Math.max(totalPages, 1));
 
       setTickets(ticketData);
 
       setPagination({
-        page: Number(pageData.page) || page,
-        limit: Number(pageData.limit) || 20,
+        page: safePage,
+        limit: Number(pageData.limit) || TICKETS_PER_PAGE,
         total: Number(pageData.total) || 0,
-        total_pages: Number(pageData.total_pages) || 0,
+        total_pages: totalPages,
       });
+      setPage(safePage);
     } catch (err) {
       setError(getErrorMessage(err, "Failed to load support tickets."));
     } finally {
@@ -222,6 +227,7 @@ function Support() {
       return matchesSearch && matchesPriority;
     });
   }, [tickets, search, priorityFilter]);
+  const visibleTickets = filteredTickets.slice(0, TICKETS_PER_PAGE);
 
   // Summary cards use the tickets loaded for the current page.
   const openCount = tickets.filter(
@@ -400,16 +406,6 @@ function Support() {
     setPage(1);
   };
 
-  const handlePreviousPage = () => {
-    setPage((previous) => Math.max(1, previous - 1));
-  };
-
-  const handleNextPage = () => {
-    setPage((previous) =>
-      Math.min(pagination.total_pages || 1, previous + 1)
-    );
-  };
-
   return (
     <div className="min-h-full bg-gray-50 p-4 sm:p-6 lg:p-8">
       {/* Header */}
@@ -504,7 +500,10 @@ function Support() {
           <input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search tickets, customers, email..."
             className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10"
           />
@@ -524,7 +523,10 @@ function Support() {
 
         <select
           value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
+          onChange={(e) => {
+            setPriorityFilter(e.target.value);
+            setPage(1);
+          }}
           className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none transition focus:border-brand-primary"
         >
           {PRIORITY_OPTIONS.map((option) => (
@@ -585,6 +587,7 @@ function Support() {
                 onClick={() => {
                   setSearch("");
                   setPriorityFilter("all");
+                  setPage(1);
                 }}
                 className="mt-4 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-cyprus hover:bg-gray-50"
               >
@@ -622,7 +625,7 @@ function Support() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {filteredTickets.map((ticket) => (
+                  {visibleTickets.map((ticket) => (
                     <tr
                       key={ticket.id}
                       className="transition hover:bg-gray-50/80"
@@ -692,7 +695,7 @@ function Support() {
 
             {/* Mobile and Tablet Cards */}
             <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:hidden">
-              {filteredTickets.map((ticket) => (
+              {visibleTickets.map((ticket) => (
                 <div
                   key={ticket.id}
                   className="min-w-0 rounded-xl border border-gray-100 p-4 transition hover:border-gray-200 hover:shadow-sm"
@@ -753,40 +756,15 @@ function Support() {
           </>
         )}
 
-        {/* Pagination */}
-        {!loading && pagination.total_pages > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 sm:flex-row sm:px-5">
-            <p className="text-center text-sm text-gray-500 sm:text-left">
-              Page {pagination.page} of {pagination.total_pages}
-              {" · "}
-              {pagination.total} tickets
-            </p>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePreviousPage}
-                disabled={page <= 1}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <i className="fa-solid fa-chevron-left text-xs" />
-                Previous
-              </button>
-
-              <button
-                type="button"
-                onClick={handleNextPage}
-                disabled={
-                  page >= pagination.total_pages ||
-                  pagination.total_pages === 0
-                }
-                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Next
-                <i className="fa-solid fa-chevron-right text-xs" />
-              </button>
-            </div>
-          </div>
+        {!loading && (
+          <Pagination
+            page={page}
+            totalPages={pagination.total_pages}
+            totalItems={pagination.total}
+            pageSize={TICKETS_PER_PAGE}
+            itemLabel="tickets"
+            onPageChange={setPage}
+          />
         )}
       </div>
 

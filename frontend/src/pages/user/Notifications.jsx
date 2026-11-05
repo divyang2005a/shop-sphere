@@ -1,8 +1,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import Pagination from "../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/notifications";
+const PAGE_SIZE = 10;
 
 function Notifications({
     mode = "page",
@@ -14,6 +16,9 @@ function Notifications({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [filter, setFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [markingNotificationIds, setMarkingNotificationIds] = useState([]);
+    const [markingAllRead, setMarkingAllRead] = useState(false);
 
     const fetchNotifications = useCallback(async () => {
         setLoading(true);
@@ -103,6 +108,105 @@ function Notifications({
         [notifications]
     );
 
+    const markAsRead = async (notification) => {
+        const notificationId =
+            notification.id ?? notification.notification_id;
+
+        if (notificationId == null) {
+            setError("Unable to mark this notification as read.");
+            return;
+        }
+
+        setMarkingNotificationIds((current) => [
+            ...current,
+            String(notificationId),
+        ]);
+        setError("");
+
+        try {
+            const token = localStorage.getItem("shopsphereToken");
+            const response = await fetch(
+                `${API_URL}/${encodeURIComponent(notificationId)}/read`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token && {
+                            Authorization: ["Bearer", token].join(" "),
+                        }),
+                    },
+                }
+            );
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok || result.success === false) {
+                throw new Error(
+                    result.message || "Failed to mark notification as read."
+                );
+            }
+
+            setNotifications((current) =>
+                current.map((item) =>
+                    String(item.id ?? item.notification_id) ===
+                    String(notificationId)
+                        ? { ...item, is_read: true, read: true }
+                        : item
+                )
+            );
+        } catch (err) {
+            setError(
+                err.message || "Unable to mark notification as read."
+            );
+        } finally {
+            setMarkingNotificationIds((current) =>
+                current.filter((id) => id !== String(notificationId))
+            );
+        }
+    };
+
+    const markAllAsRead = async () => {
+        if (unreadCount === 0) {
+            return;
+        }
+
+        setMarkingAllRead(true);
+        setError("");
+
+        try {
+            const token = localStorage.getItem("shopsphereToken");
+            const response = await fetch(`${API_URL}/read-all`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token && {
+                        Authorization: ["Bearer", token].join(" "),
+                    }),
+                },
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok || result.success === false) {
+                throw new Error(
+                    result.message || "Failed to mark notifications as read."
+                );
+            }
+
+            setNotifications((current) =>
+                current.map((notification) => ({
+                    ...notification,
+                    is_read: true,
+                    read: true,
+                }))
+            );
+        } catch (err) {
+            setError(
+                err.message || "Unable to mark notifications as read."
+            );
+        } finally {
+            setMarkingAllRead(false);
+        }
+    };
+
     useEffect(() => {
         onUnreadCountChange?.(unreadCount);
     }, [onUnreadCountChange, unreadCount]);
@@ -114,6 +218,15 @@ function Notifications({
 
         return notifications;
     }, [notifications, filter]);
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredNotifications.length / PAGE_SIZE)
+    );
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentNotifications = filteredNotifications.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     const formatDate = (dateValue) => {
         if (!dateValue) return "Date unavailable";
@@ -173,14 +286,28 @@ function Notifications({
             >
                 <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                     <h2 className="font-bold text-cyprus">Notifications</h2>
-                    <button
-                        type="button"
-                        aria-label="Close notifications"
-                        onClick={onClose}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-text-grey hover:bg-gray-100"
-                    >
-                        <i className="fa-solid fa-xmark"></i>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {unreadCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={markAllAsRead}
+                                disabled={markingAllRead}
+                                className="text-xs font-semibold text-ocean-green hover:underline disabled:opacity-50"
+                            >
+                                {markingAllRead
+                                    ? "Marking..."
+                                    : "Mark all read"}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            aria-label="Close notifications"
+                            onClick={onClose}
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-text-grey hover:bg-gray-100"
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="max-h-96 overflow-y-auto">
@@ -232,7 +359,37 @@ function Notifications({
                                                 notification.notification_id ??
                                                 index
                                             }
-                                            className="flex gap-3 px-4 py-3"
+                                            onClick={() => {
+                                                if (isUnread(notification)) {
+                                                    markAsRead(notification);
+                                                }
+                                            }}
+                                            onKeyDown={(event) => {
+                                                if (
+                                                    event.target ===
+                                                        event.currentTarget &&
+                                                    ["Enter", " "].includes(
+                                                        event.key
+                                                    ) &&
+                                                    isUnread(notification)
+                                                ) {
+                                                    event.preventDefault();
+                                                    markAsRead(notification);
+                                                }
+                                            }}
+                                            role={
+                                                isUnread(notification)
+                                                    ? "button"
+                                                    : undefined
+                                            }
+                                            tabIndex={
+                                                isUnread(notification) ? 0 : undefined
+                                            }
+                                            className={`flex gap-3 px-4 py-3 ${
+                                                isUnread(notification)
+                                                    ? "cursor-pointer bg-emerald-50/40 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ocean-green"
+                                                    : ""
+                                            }`}
                                         >
                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-aqua-spring text-ocean-green">
                                                 <i
@@ -252,6 +409,24 @@ function Notifications({
                                                     {formatDate(date)}
                                                 </p>
                                             </div>
+                                            {isUnread(notification) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        markAsRead(notification)
+                                                    }}
+                                                    disabled={markingNotificationIds.includes(
+                                                        String(
+                                                            notification.id ??
+                                                                notification.notification_id
+                                                        )
+                                                    )}
+                                                    className="shrink-0 self-center text-[11px] font-semibold text-ocean-green hover:underline disabled:opacity-50"
+                                                >
+                                                    Mark read
+                                                </button>
+                                            )}
                                         </article>
                                     );
                                 })}
@@ -291,19 +466,34 @@ function Notifications({
                         </p>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={fetchNotifications}
-                        disabled={loading}
-                        className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyprus transition hover:border-ocean-green hover:text-ocean-green disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <i
-                            className={`fa-solid fa-rotate-right ${
-                                loading ? "animate-spin" : ""
-                            }`}
-                        ></i>
-                        Refresh
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {unreadCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={markAllAsRead}
+                                disabled={markingAllRead}
+                                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocean-green transition hover:border-ocean-green disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <i className="fa-solid fa-check-double" />
+                                {markingAllRead
+                                    ? "Marking..."
+                                    : "Mark all as read"}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={fetchNotifications}
+                            disabled={loading}
+                            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyprus transition hover:border-ocean-green hover:text-ocean-green disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <i
+                                className={`fa-solid fa-rotate-right ${
+                                    loading ? "animate-spin" : ""
+                                }`}
+                            ></i>
+                            Refresh
+                        </button>
+                    </div>
                 </div>
 
                 {/* Summary */}
@@ -353,7 +543,10 @@ function Notifications({
                         <div className="flex rounded-lg bg-gray-100 p-1">
                             <button
                                 type="button"
-                                onClick={() => setFilter("all")}
+                                onClick={() => {
+                                    setCurrentPage(1);
+                                    setFilter("all");
+                                }}
                                 className={`rounded-md px-3 py-2 text-xs font-semibold transition sm:text-sm ${
                                     filter === "all"
                                         ? "bg-white text-cyprus shadow-sm"
@@ -365,7 +558,10 @@ function Notifications({
 
                             <button
                                 type="button"
-                                onClick={() => setFilter("unread")}
+                                onClick={() => {
+                                    setCurrentPage(1);
+                                    setFilter("unread");
+                                }}
                                 className={`rounded-md px-3 py-2 text-xs font-semibold transition sm:text-sm ${
                                     filter === "unread"
                                         ? "bg-white text-cyprus shadow-sm"
@@ -426,7 +622,7 @@ function Notifications({
                         </div>
                     ) : (
                         <div className="divide-y divide-gray-100">
-                            {filteredNotifications.map((notification, index) => {
+                            {currentNotifications.map((notification, index) => {
                                 const unread = isUnread(notification);
 
                                 const title =
@@ -455,8 +651,30 @@ function Notifications({
                                             notification.notification_id ??
                                             index
                                         }
+                                        onClick={() => {
+                                            if (unread) {
+                                                markAsRead(notification);
+                                            }
+                                        }}
+                                        onKeyDown={(event) => {
+                                            if (
+                                                event.target ===
+                                                    event.currentTarget &&
+                                                ["Enter", " "].includes(
+                                                    event.key
+                                                ) &&
+                                                unread
+                                            ) {
+                                                event.preventDefault();
+                                                markAsRead(notification);
+                                            }
+                                        }}
+                                        role={unread ? "button" : undefined}
+                                        tabIndex={unread ? 0 : undefined}
                                         className={`flex gap-3 p-4 transition hover:bg-gray-50 sm:gap-4 sm:px-6 ${
-                                            unread ? "bg-emerald-50/40" : "bg-white"
+                                            unread
+                                                ? "cursor-pointer bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ocean-green"
+                                                : "bg-white"
                                         }`}
                                     >
                                         <div
@@ -495,6 +713,26 @@ function Notifications({
                                                 <i className="fa-regular fa-clock"></i>
                                                 {formatDate(date)}
                                             </p>
+
+                                            {unread && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        markAsRead(notification)
+                                                    }}
+                                                    disabled={markingNotificationIds.includes(
+                                                        String(
+                                                            notification.id ??
+                                                                notification.notification_id
+                                                        )
+                                                    )}
+                                                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-ocean-green/20 px-3 py-1.5 text-xs font-semibold text-ocean-green transition hover:bg-aqua-spring disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    <i className="fa-solid fa-check" />
+                                                    Mark as read
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -502,7 +740,17 @@ function Notifications({
                         </div>
                     )}
 
-                    {!loading && !error && notifications.length > 0 && (
+                    {!loading && !error && mode === "page" && (
+                        <Pagination
+                            page={safeCurrentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredNotifications.length}
+                            pageSize={PAGE_SIZE}
+                            itemLabel="notifications"
+                            onPageChange={setCurrentPage}
+                        />
+                    )}
+                    {!loading && !error && mode !== "page" && notifications.length > 0 && (
                         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 text-center text-xs text-text-grey">
                             Showing {filteredNotifications.length} of{" "}
                             {notifications.length} notifications

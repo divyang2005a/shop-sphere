@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
+import ProductPagination from "./ProductPagination";
 
 const BASE_URL = "http://192.168.1.20:5000";
 const API_URL = `${BASE_URL}/api/admin/categories`;
+const ITEMS_PER_PAGE = 10;
 
 function Categories() {
   const [categories, setCategories] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -23,6 +26,15 @@ function Categories() {
   });
 
   const token = localStorage.getItem("shopsphereToken");
+  const totalPages = Math.max(
+    1,
+    Math.ceil(categories.length / ITEMS_PER_PAGE)
+  );
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const currentCategories = categories.slice(
+    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+    safeCurrentPage * ITEMS_PER_PAGE
+  );
 
   // Generate slug automatically
   const generateSlug = (name) => {
@@ -187,6 +199,7 @@ function Categories() {
       );
 
       resetForm();
+      setCurrentPage(1);
       await fetchCategories();
     } catch (err) {
       setError(err.message || "Something went wrong");
@@ -546,7 +559,7 @@ function Categories() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {categories.map((category) => (
+                  {currentCategories.map((category) => (
                     <tr
                       key={category.id}
                       className="transition hover:bg-gray-50"
@@ -627,6 +640,16 @@ function Categories() {
                 </tbody>
               </table>
             </div>
+          )}
+          {!loading && categories.length > 0 && (
+            <ProductPagination
+              page={safeCurrentPage}
+              totalPages={totalPages}
+              totalItems={categories.length}
+              pageSize={ITEMS_PER_PAGE}
+              itemLabel="categories"
+              onPageChange={setCurrentPage}
+            />
           )}
         </div>
       </div>

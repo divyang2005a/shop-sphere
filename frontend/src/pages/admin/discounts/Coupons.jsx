@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api";
+const PAGE_SIZE = 10;
 
 const initialFormData = {
     code: "",
@@ -21,6 +23,7 @@ function Coupons() {
     const [coupons, setCoupons] = useState([]);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [showForm, setShowForm] = useState(false);
     const [formData, setFormData] = useState({ ...initialFormData });
@@ -500,6 +503,12 @@ function Coupons() {
 
         return searchMatch && statusMatch;
     });
+    const totalPages = Math.max(1, Math.ceil(filteredCoupons.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentCoupons = filteredCoupons.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     // --------------------------------------------------
     // SUMMARY COUNTS
@@ -1182,14 +1191,20 @@ function Coupons() {
                             type="text"
                             placeholder="Search coupon code..."
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                setCurrentPage(1);
+                                setSearch(e.target.value);
+                            }}
                             className="w-full rounded-lg border border-gray-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-ocean-green"
                         />
                     </div>
 
                     <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                            setCurrentPage(1);
+                            setStatusFilter(e.target.value);
+                        }}
                         className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
                     >
                         <option value="All">All Status</option>
@@ -1243,7 +1258,7 @@ function Coupons() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredCoupons.map((coupon) => {
+                                    {currentCoupons.map((coupon) => {
                                         const status = getCouponStatus(coupon);
 
                                         return (
@@ -1338,7 +1353,7 @@ function Coupons() {
 
                     {/* Mobile and Tablet Cards */}
                     <div className="space-y-4 lg:hidden">
-                        {filteredCoupons.map((coupon) => {
+                        {currentCoupons.map((coupon) => {
                             const status = getCouponStatus(coupon);
 
                             return (
@@ -1463,6 +1478,17 @@ function Coupons() {
                             );
                         })}
                     </div>
+
+                    {filteredCoupons.length > 0 && (
+                        <Pagination
+                            page={safeCurrentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredCoupons.length}
+                            pageSize={PAGE_SIZE}
+                            itemLabel="coupons"
+                            onPageChange={setCurrentPage}
+                        />
+                    )}
 
                     {/* Empty State */}
                     {filteredCoupons.length === 0 && (

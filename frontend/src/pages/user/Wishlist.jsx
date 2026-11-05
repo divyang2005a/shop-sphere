@@ -2,8 +2,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
+import Pagination from "../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000";
+const PAGE_SIZE = 10;
 
 // Get product ID
 const getProductId = (product) =>
@@ -116,10 +118,17 @@ const formatPrice = (price) =>
 
 function Wishlist() {
     const [wishlist, setWishlist] = useState([]);
+    const [currentPage, setCurrentPage] = useState(1);
     const [imageMap, setImageMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [removingId, setRemovingId] = useState(null);
     const [movingId, setMovingId] = useState(null);
+    const totalPages = Math.max(1, Math.ceil(wishlist.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentWishlist = wishlist.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
 
@@ -511,7 +520,7 @@ function Wishlist() {
                 ) : (
                     /* Wishlist Product Cards */
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {wishlist.map((item) => {
+                        {currentWishlist.map((item) => {
                             const productId = getProductId(item);
                             const itemId =
                                 item.wishlist_item_id ?? item.id;
@@ -653,6 +662,16 @@ function Wishlist() {
                             );
                         })}
                     </div>
+                )}
+                {!loading && !error && wishlist.length > 0 && (
+                    <Pagination
+                        page={safeCurrentPage}
+                        totalPages={totalPages}
+                        totalItems={wishlist.length}
+                        pageSize={PAGE_SIZE}
+                        itemLabel="wishlist items"
+                        onPageChange={setCurrentPage}
+                    />
                 )}
             </div>
         </UserDashboardLayout>

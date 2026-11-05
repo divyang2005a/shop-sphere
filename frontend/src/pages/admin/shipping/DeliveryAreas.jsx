@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/admin/delivery-areas";
+const PAGE_SIZE = 10;
 
 const EMPTY_FORM = {
     name: "",
@@ -16,6 +18,7 @@ function DeliveryAreas() {
 
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -335,6 +338,12 @@ function DeliveryAreas() {
             return matchesSearch && matchesStatus;
         });
     }, [areas, search, statusFilter]);
+    const totalPages = Math.max(1, Math.ceil(filteredAreas.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentAreas = filteredAreas.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
     // Statistics
     const stats = useMemo(() => {
@@ -657,14 +666,20 @@ function DeliveryAreas() {
                 <input
                     type="text"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                        setCurrentPage(1);
+                        setSearch(event.target.value);
+                    }}
                     placeholder="Search by area name or PIN code..."
                     className="min-w-0 flex-1 rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-cyprus"
                 />
 
                 <select
                     value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
+                    onChange={(event) => {
+                        setCurrentPage(1);
+                        setStatusFilter(event.target.value);
+                    }}
                     className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyprus sm:w-52"
                 >
                     <option value="all">All Statuses</option>
@@ -734,7 +749,7 @@ function DeliveryAreas() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredAreas.map((area) => (
+                                    {currentAreas.map((area) => (
                                         <tr
                                             key={area.id}
                                             className="transition hover:bg-gray-50"
@@ -817,7 +832,7 @@ function DeliveryAreas() {
 
                         {/* Mobile / Tablet Cards */}
                         <div className="grid grid-cols-1 gap-4 p-4 lg:hidden">
-                            {filteredAreas.map((area) => (
+                            {currentAreas.map((area) => (
                                 <div
                                     key={area.id}
                                     className="rounded-xl border border-gray-200 p-4 transition hover:border-gray-300 hover:shadow-sm"
@@ -899,6 +914,16 @@ function DeliveryAreas() {
                             ))}
                         </div>
                     </>
+                )}
+                {!loading && !error && filteredAreas.length > 0 && (
+                    <Pagination
+                        page={safeCurrentPage}
+                        totalPages={totalPages}
+                        totalItems={filteredAreas.length}
+                        pageSize={PAGE_SIZE}
+                        itemLabel="delivery areas"
+                        onPageChange={setCurrentPage}
+                    />
                 )}
             </div>
         </div>

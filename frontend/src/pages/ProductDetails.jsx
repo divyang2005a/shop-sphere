@@ -475,7 +475,7 @@ function ProductDetails() {
         const response = await fetch(
           `${API_URL}/products/recommended?product_id=${encodeURIComponent(
             getId(product)
-          )}&limit=8`,
+          )}&limit=5`,
           { signal: controller.signal, headers: getHeaders() }
         );
 
@@ -486,7 +486,7 @@ function ProductDetails() {
 
         const list = getList(data)
           .filter((item) => String(getId(item)) !== currentId)
-          .slice(0, 8);
+          .slice(0, 5);
 
         if (!controller.signal.aborted) {
           setRelatedProducts(list);

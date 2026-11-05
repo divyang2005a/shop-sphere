@@ -5,8 +5,10 @@ import React, {
     useState,
 } from "react";
 import { Link } from "react-router-dom";
+import OrdersPagination from "./OrdersPagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api/admin";
+const ORDERS_PER_PAGE = 10;
 
 // Format date
 function formatDate(date) {
@@ -255,6 +257,7 @@ async function fetchJSON(url, headers) {
 
 function ReturnsRefunds() {
     const [orders, setOrders] = useState([]);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [search, setSearch] = useState("");
     const [typeFilter, setTypeFilter] = useState("All");
@@ -377,6 +380,15 @@ function ReturnsRefunds() {
             );
         });
     }, [orders, search, typeFilter, statusFilter]);
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredOrders.length / ORDERS_PER_PAGE)
+    );
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentOrders = filteredOrders.slice(
+        (safeCurrentPage - 1) * ORDERS_PER_PAGE,
+        safeCurrentPage * ORDERS_PER_PAGE
+    );
 
     // Statistics
     const totalRequests = orders.length;
@@ -399,6 +411,7 @@ function ReturnsRefunds() {
         setSearch("");
         setTypeFilter("All");
         setStatusFilter("All");
+        setCurrentPage(1);
     };
 
     // Status badge styles
@@ -593,9 +606,10 @@ function ReturnsRefunds() {
                         <input
                             type="text"
                             value={search}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                setCurrentPage(1);
                                 setSearch(event.target.value)
-                            }
+                            }}
                             placeholder="Search request, order, customer or product..."
                             className="w-full rounded-lg border border-gray-200 bg-gray-50 py-3 pl-11 pr-4 text-sm text-cyprus outline-none transition focus:border-ocean-green focus:bg-white"
                         />
@@ -605,9 +619,10 @@ function ReturnsRefunds() {
                     <div className="flex flex-col gap-3 sm:flex-row">
                         <select
                             value={typeFilter}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                setCurrentPage(1);
                                 setTypeFilter(event.target.value)
-                            }
+                            }}
                             className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-cyprus outline-none focus:border-ocean-green"
                         >
                             <option value="All">All Types</option>
@@ -617,9 +632,10 @@ function ReturnsRefunds() {
 
                         <select
                             value={statusFilter}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                setCurrentPage(1);
                                 setStatusFilter(event.target.value)
-                            }
+                            }}
                             className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-cyprus outline-none focus:border-ocean-green"
                         >
                             <option value="All">All Status</option>
@@ -743,7 +759,7 @@ function ReturnsRefunds() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredOrders.map((order) => (
+                                    {currentOrders.map((order) => (
                                         <tr
                                             key={`${order.type}-${order.rawId}`}
                                             className="transition hover:bg-gray-50"
@@ -832,7 +848,7 @@ function ReturnsRefunds() {
                 !error &&
                 filteredOrders.length > 0 && (
                     <div className="space-y-4 lg:hidden">
-                        {filteredOrders.map((order) => (
+                        {currentOrders.map((order) => (
                             <div
                                 key={`${order.type}-${order.rawId}`}
                                 className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
@@ -943,6 +959,16 @@ function ReturnsRefunds() {
                         ))}
                     </div>
                 )}
+
+            {!loading && !error && (
+                <OrdersPagination
+                    page={safeCurrentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredOrders.length}
+                    pageSize={ORDERS_PER_PAGE}
+                    onPageChange={setCurrentPage}
+                />
+            )}
 
             {/* Empty State */}
             {!loading &&

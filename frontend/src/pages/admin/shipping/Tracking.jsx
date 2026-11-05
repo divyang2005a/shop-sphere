@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/shipments/admin";
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
     { value: "pending", label: "Pending" },
@@ -18,6 +20,7 @@ function Tracking() {
     const [shipments, setShipments] = useState([]);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [updatingId, setUpdatingId] = useState(null);
@@ -217,6 +220,17 @@ function Tracking() {
             return matchesSearch && matchesStatus;
         });
     }, [shipments, search, statusFilter]);
+
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredShipments.length / PAGE_SIZE)
+    );
+    const safeCurrentPage = Math.max(1, Math.min(currentPage, totalPages));
+
+    const paginatedShipments = useMemo(() => {
+        const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+        return filteredShipments.slice(startIndex, startIndex + PAGE_SIZE);
+    }, [filteredShipments, safeCurrentPage]);
 
     // Dashboard statistics
     const stats = useMemo(() => {
@@ -596,14 +610,20 @@ function Tracking() {
                 <input
                     type="text"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                        setSearch(event.target.value);
+                        setCurrentPage(1);
+                    }}
                     placeholder="Search order, tracking number, customer, courier..."
                     className="min-w-0 flex-1 rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none focus:border-cyprus"
                 />
 
                 <select
                     value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
+                    onChange={(event) => {
+                        setStatusFilter(event.target.value);
+                        setCurrentPage(1);
+                    }}
                     className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyprus sm:w-56"
                 >
                     <option value="all">All Statuses</option>
@@ -653,7 +673,7 @@ function Tracking() {
                     </div>
                 ) : (
                     <div className="divide-y divide-gray-100">
-                        {filteredShipments.map((shipment) => {
+                        {paginatedShipments.map((shipment) => {
                             const shipmentId = getShipmentId(shipment);
                             const isExpanded = expandedId === shipmentId;
 
@@ -793,10 +813,26 @@ function Tracking() {
                                             {renderUpdateForm(shipment)}
                                         </div>
                                     )}
+
                                 </div>
                             );
                         })}
                     </div>
+                )}
+
+                {!loading && filteredShipments.length > 0 && (
+                    <Pagination
+                        page={safeCurrentPage}
+                        totalPages={totalPages}
+                        totalItems={filteredShipments.length}
+                        pageSize={PAGE_SIZE}
+                        itemLabel="shipments"
+                        onPageChange={(page) =>
+                            setCurrentPage(
+                                Math.max(1, Math.min(page, totalPages))
+                            )
+                        }
+                    />
                 )}
             </div>
         </div>

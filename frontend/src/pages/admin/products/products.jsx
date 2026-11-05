@@ -1,9 +1,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
+import ProductPagination from "./ProductPagination";
 
 const API_URL = "http://192.168.1.20:5000/api/admin/products";
 const IMAGE_API_URL = "http://192.168.1.20:5000/api/admin/products";
 const SERVER_URL = "http://192.168.1.20:5000";
+const PRODUCTS_PER_PAGE = 10;
 
 // Product Image Component
 const ProductImage = ({ productId, title }) => {
@@ -109,6 +111,7 @@ const Products = () => {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [stockFilter, setStockFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -318,6 +321,16 @@ const Products = () => {
         });
     }, [products, search, statusFilter, stockFilter]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
+    );
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentProducts = filteredProducts.slice(
+        (safeCurrentPage - 1) * PRODUCTS_PER_PAGE,
+        safeCurrentPage * PRODUCTS_PER_PAGE
+    );
+
     const activeProducts = products.filter(
         (product) => product.status === "active"
     ).length;
@@ -494,9 +507,10 @@ const Products = () => {
                                 <input
                                     type="text"
                                     value={search}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                        setCurrentPage(1);
                                         setSearch(e.target.value)
-                                    }
+                                    }}
                                     placeholder="Search products, SKU, code..."
                                     className="w-full rounded-lg border border-gray-200 py-3 pl-11 pr-4 outline-none transition focus:border-ocean-green focus:ring-2 focus:ring-ocean-green/20"
                                 />
@@ -504,9 +518,10 @@ const Products = () => {
 
                             <select
                                 value={statusFilter}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                    setCurrentPage(1);
                                     setStatusFilter(e.target.value)
-                                }
+                                }}
                                 className="rounded-lg border border-gray-200 bg-white px-4 py-3 outline-none focus:border-ocean-green"
                             >
                                 <option value="all">All Statuses</option>
@@ -517,9 +532,10 @@ const Products = () => {
 
                             <select
                                 value={stockFilter}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                    setCurrentPage(1);
                                     setStockFilter(e.target.value)
-                                }
+                                }}
                                 className="rounded-lg border border-gray-200 bg-white px-4 py-3 outline-none focus:border-ocean-green"
                             >
                                 <option value="all">All Stock</option>
@@ -545,8 +561,8 @@ const Products = () => {
                             </div>
 
                             <span className="text-sm text-text-grey">
-                                Showing {filteredProducts.length} of{" "}
-                                {products.length} products
+                                Showing {currentProducts.length} of{" "}
+                                {filteredProducts.length} matching products
                             </span>
                         </div>
 
@@ -578,7 +594,7 @@ const Products = () => {
                                     </thead>
 
                                     <tbody className="divide-y divide-gray-100">
-                                        {filteredProducts.map((product) => {
+                                        {currentProducts.map((product) => {
                                             const stockStatus =
                                                 getStockStatus(product);
 
@@ -684,6 +700,15 @@ const Products = () => {
                                     </tbody>
                                 </table>
                             </div>
+                        )}
+                        {!loading && filteredProducts.length > 0 && (
+                            <ProductPagination
+                                page={safeCurrentPage}
+                                totalPages={totalPages}
+                                totalItems={filteredProducts.length}
+                                pageSize={PRODUCTS_PER_PAGE}
+                                onPageChange={setCurrentPage}
+                            />
                         )}
                     </div>
                 </>

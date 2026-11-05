@@ -2,12 +2,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout";
+import Pagination from "../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/cart";
 const IMAGE_API_URL = "http://192.168.1.20:5000/api/products";
 const CHECKOUT_SUMMARY_URL =
     "http://192.168.1.20:5000/api/orders/checkout-summary";
 const SERVER_URL = "http://192.168.1.20:5000";
+const PAGE_SIZE = 10;
 
 // Format price
 const formatPrice = (price) =>
@@ -165,6 +167,7 @@ function Cart() {
     const navigate = useNavigate();
 
     const [cartItems, setCartItems] = useState([]);
+    const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [summaryLoading, setSummaryLoading] = useState(true);
     const [summaryError, setSummaryError] = useState("");
@@ -569,6 +572,13 @@ function Cart() {
         Math.max(0, subtotal + shipping + tax - discount)
     );
 
+    const totalPages = Math.max(1, Math.ceil(cartItems.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentCartItems = cartItems.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
+
     const totalQuantity = cartItems.reduce(
         (sum, item) => sum + (Number(item.quantity) || 1),
         0
@@ -609,7 +619,7 @@ function Cart() {
                         </button>
 
                         <Link
-                            to="/products"
+                            to="/"
                             className="inline-flex w-fit items-center rounded-full border border-cyprus px-5 py-3 text-xs font-bold text-cyprus transition hover:bg-cyprus hover:text-white"
                         >
                             <i className="fa-solid fa-arrow-left mr-2" />
@@ -673,7 +683,7 @@ function Cart() {
                             </p>
 
                             <Link
-                                to="/products"
+                                to="/"
                                 className="mt-6 rounded-full bg-ocean-green px-6 py-3 text-xs font-bold text-white transition hover:bg-cyprus"
                             >
                                 Start Shopping
@@ -717,7 +727,7 @@ function Cart() {
                             </div>
 
                             <div className="divide-y divide-gray-200">
-                                {cartItems.map((item, index) => {
+                                {currentCartItems.map((item, index) => {
                                     const price = Number(item.price) || 0;
                                     const quantity = Number(item.quantity) || 1;
 
@@ -814,6 +824,14 @@ function Cart() {
                                     );
                                 })}
                             </div>
+                            <Pagination
+                                page={safeCurrentPage}
+                                totalPages={totalPages}
+                                totalItems={cartItems.length}
+                                pageSize={PAGE_SIZE}
+                                itemLabel="cart items"
+                                onPageChange={setCurrentPage}
+                            />
                         </section>
 
                         {/* Order Summary */}
@@ -925,7 +943,7 @@ function Cart() {
                             </div>
 
                             <Link
-                                to="/products"
+                                to="/"
                                 className="mt-4 block text-center text-xs font-bold text-cyprus hover:text-ocean-green"
                             >
                                 Continue Shopping

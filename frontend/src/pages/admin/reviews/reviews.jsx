@@ -4,9 +4,10 @@ import React, {
     useMemo,
     useState,
 } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
-const PRODUCT_REVIEW_LIMIT = 6;
+const PRODUCT_REVIEW_LIMIT = 10;
 const SITE_REVIEW_LIMIT = 6;
 
 function Reviews() {
@@ -17,6 +18,7 @@ function Reviews() {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [ratingFilter, setRatingFilter] = useState("All");
+    const [productReviewPage, setProductReviewPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -277,7 +279,7 @@ function Reviews() {
     // FETCH PRODUCT REVIEWS
     // =========================
     const fetchReviews = useCallback(
-        async (page = 1, status = statusFilter) => {
+        async (page = productReviewPage, status = statusFilter) => {
             setLoading(true);
             setError("");
 
@@ -327,8 +329,15 @@ function Reviews() {
 
                 setReviews(normalizedReviews);
 
+                const totalPages =
+                    Number(data.pagination?.total_pages) || 0;
+                const safePage = Math.min(
+                    page,
+                    Math.max(totalPages, 1)
+                );
+
                 setPagination({
-                    page: Number(data.pagination?.page) || page,
+                    page: safePage,
                     limit:
                         Number(data.pagination?.limit) ||
                         PRODUCT_REVIEW_LIMIT,
@@ -336,9 +345,12 @@ function Reviews() {
                         data.pagination?.total != null
                             ? Number(data.pagination.total)
                             : normalizedReviews.length,
-                    total_pages:
-                        Number(data.pagination?.total_pages) || 0,
+                    total_pages: totalPages,
                 });
+
+                if (safePage !== productReviewPage) {
+                    setProductReviewPage(safePage);
+                }
             } catch (err) {
                 setReviews([]);
 
@@ -350,12 +362,12 @@ function Reviews() {
                 setLoading(false);
             }
         },
-        [statusFilter]
+        [productReviewPage, statusFilter]
     );
 
     useEffect(() => {
-        fetchReviews(1, statusFilter);
-    }, [fetchReviews, statusFilter]);
+        fetchReviews(productReviewPage, statusFilter);
+    }, [fetchReviews, productReviewPage, statusFilter]);
 
     // =========================
     // APPROVE / REJECT PRODUCT REVIEW
@@ -411,7 +423,7 @@ function Reviews() {
                 `Product review ${apiStatus} successfully.`
             );
 
-            await fetchReviews(pagination.page, statusFilter);
+            await fetchReviews(productReviewPage, statusFilter);
 
             showSuccessPopup(
                 `Product review ${apiStatus} successfully.`
@@ -484,9 +496,9 @@ function Reviews() {
 
                     const nextPage =
                         reviews.length === 1 &&
-                        pagination.page > 1
-                            ? pagination.page - 1
-                            : pagination.page;
+                        productReviewPage > 1
+                            ? productReviewPage - 1
+                            : productReviewPage;
 
                     setPopupLoading(false);
                     setPopup((previous) => ({
@@ -494,7 +506,11 @@ function Reviews() {
                         open: false,
                     }));
 
-                    await fetchReviews(nextPage, statusFilter);
+                    if (nextPage === productReviewPage) {
+                        await fetchReviews(nextPage, statusFilter);
+                    } else {
+                        setProductReviewPage(nextPage);
+                    }
 
                     showSuccessPopup(
                         "Product review deleted successfully."
@@ -547,6 +563,11 @@ function Reviews() {
         });
     }, [reviews, search, statusFilter, ratingFilter]);
 
+    const visibleReviews = filteredReviews.slice(
+        0,
+        PRODUCT_REVIEW_LIMIT
+    );
+
     const approvedCount = reviews.filter(
         (review) => review.status === "Approved"
     ).length;
@@ -561,10 +582,7 @@ function Reviews() {
 
     const changeStatusFilter = (value) => {
         setStatusFilter(value);
-        setPagination((previous) => ({
-            ...previous,
-            page: 1,
-        }));
+        setProductReviewPage(1);
     };
 
     // =========================
@@ -854,7 +872,7 @@ function Reviews() {
                 <button
                     type="button"
                     onClick={() => {
-                        fetchReviews(pagination.page, statusFilter);
+                        fetchReviews(productReviewPage, statusFilter);
                         fetchSiteReviews(siteReviewPage);
                     }}
                     disabled={loading || siteReviewsLoading}
@@ -939,9 +957,10 @@ function Reviews() {
 
                     <input
                         value={search}
-                        onChange={(event) =>
-                            setSearch(event.target.value)
-                        }
+                        onChange={(event) => {
+                            setSearch(event.target.value);
+                            setProductReviewPage(1);
+                        }}
                         placeholder="Search customer, product or comment..."
                         className="w-full rounded-lg border border-gray-200 py-3 pl-11 pr-4 outline-none focus:border-brand-primary"
                     />
@@ -963,9 +982,10 @@ function Reviews() {
 
                 <select
                     value={ratingFilter}
-                    onChange={(event) =>
-                        setRatingFilter(event.target.value)
-                    }
+                    onChange={(event) => {
+                        setRatingFilter(event.target.value);
+                        setProductReviewPage(1);
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-4 py-3 outline-none focus:border-brand-primary"
                     aria-label="Filter by rating"
                 >
@@ -1006,7 +1026,7 @@ function Reviews() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredReviews.map((review) => (
+                                    {visibleReviews.map((review) => (
                                         <tr
                                             key={review.id}
                                             className="transition hover:bg-gray-50"
@@ -1102,7 +1122,7 @@ function Reviews() {
 
                     {/* MOBILE PRODUCT REVIEW CARDS */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:hidden">
-                        {filteredReviews.map((review) => (
+                        {visibleReviews.map((review) => (
                             <div
                                 key={review.id}
                                 className="rounded-xl bg-white p-5 shadow-sm"
@@ -1204,60 +1224,14 @@ function Reviews() {
                         </div>
                     )}
 
-                    {/* PRODUCT REVIEW PAGINATION */}
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-text-grey">
-                            Showing {filteredReviews.length} of{" "}
-                            {pagination.total} product reviews
-                        </p>
-
-                        <div className="flex items-center justify-center gap-3">
-                            <button
-                                type="button"
-                                disabled={
-                                    loading ||
-                                    pagination.page <= 1
-                                }
-                                onClick={() =>
-                                    fetchReviews(
-                                        pagination.page - 1,
-                                        statusFilter
-                                    )
-                                }
-                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-cyprus hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                                <i className="fa-solid fa-chevron-left mr-2" />
-                                Previous
-                            </button>
-
-                            <span className="text-sm text-text-grey">
-                                Page {pagination.page}
-                                {pagination.total_pages > 0
-                                    ? ` of ${pagination.total_pages}`
-                                    : ""}
-                            </span>
-
-                            <button
-                                type="button"
-                                disabled={
-                                    loading ||
-                                    pagination.total_pages === 0 ||
-                                    pagination.page >=
-                                        pagination.total_pages
-                                }
-                                onClick={() =>
-                                    fetchReviews(
-                                        pagination.page + 1,
-                                        statusFilter
-                                    )
-                                }
-                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-cyprus hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                                Next
-                                <i className="fa-solid fa-chevron-right ml-2" />
-                            </button>
-                        </div>
-                    </div>
+                    <Pagination
+                        page={pagination.page}
+                        totalPages={pagination.total_pages}
+                        totalItems={pagination.total}
+                        pageSize={PRODUCT_REVIEW_LIMIT}
+                        itemLabel="product reviews"
+                        onPageChange={setProductReviewPage}
+                    />
                 </>
             )}
 

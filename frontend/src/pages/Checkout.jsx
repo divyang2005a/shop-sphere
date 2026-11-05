@@ -46,8 +46,8 @@ function getAddressId(address) {
 
 function getAddressText(address) {
     return [
-        address?.address_line1 || address?.address,
-        address?.address_line2,
+        address?.address_line1 || address?.address_line_1 || address?.address,
+        address?.address_line2 || address?.address_line_2,
         address?.landmark,
         address?.city,
         address?.state,
@@ -156,6 +156,11 @@ function Checkout() {
                 String(selectedAddressId)
         ) || null;
 
+    const selectedShippingMethod =
+        shippingMethods.find(
+            (method) => String(method.id) === String(shippingMethodId)
+        ) || null;
+
     const selectedPaymentMethod =
         paymentMethods.find(
             (method) =>
@@ -241,6 +246,10 @@ function Checkout() {
                 params.set("shipping_method_id", shippingMethodId);
             }
 
+            if (selectedAddressId) {
+                params.set("shipping_address_id", selectedAddressId);
+            }
+
             if (appliedCoupon.trim()) {
                 params.set("coupon_code", appliedCoupon.trim());
             }
@@ -323,7 +332,7 @@ function Checkout() {
             setSummaryLoading(false);
             setPaymentMethodsLoading(false);
         }
-    }, [token, shippingMethodId, appliedCoupon]);
+    }, [token, shippingMethodId, selectedAddressId, appliedCoupon]);
 
     useEffect(() => {
         fetchAddresses();
@@ -379,15 +388,21 @@ function Checkout() {
 
         try {
             const payload = {
+                type: newAddress.address_type,
                 name: newAddress.name.trim(),
-                mobile: newAddress.mobile.trim(),
-                address_line1: newAddress.address_line1.trim(),
-                address_line2: newAddress.address_line2.trim(),
-                landmark: newAddress.landmark.trim(),
+                phone: newAddress.mobile.trim(),
+                address_line_1: newAddress.address_line1.trim(),
+                address_line_2:
+                    [
+                        newAddress.address_line2.trim(),
+                        newAddress.landmark.trim(),
+                    ]
+                        .filter(Boolean)
+                        .join(", ") || null,
                 city: newAddress.city.trim(),
                 state: newAddress.state.trim(),
+                country: "India",
                 pincode: newAddress.pincode.trim(),
-                address_type: newAddress.address_type,
             };
 
             const response = await fetch(ADDRESSES_URL, {
@@ -499,12 +514,20 @@ function Checkout() {
 
     const subtotal = Number(summary?.subtotal ?? 0);
     const tax = Number(summary?.tax ?? 0);
-    const shipping = Number(summary?.shipping_fee ?? 0);
+    const summaryShipping = Number(summary?.shipping_fee ?? 0);
+    const summaryMethodFee = Number(summary?.shipping_method_fee ?? 0);
+    const deliveryAreaFee = Number(
+        summary?.delivery_area_fee ??
+        summaryShipping - summaryMethodFee
+    );
+    const shippingMethodFee = Number(
+        selectedShippingMethod?.price ?? summaryMethodFee
+    );
+    const shipping = deliveryAreaFee + shippingMethodFee;
     const discount = Number(summary?.coupon_discount ?? 0);
 
     const total = Number(
-        summary?.total ??
-            subtotal + tax + shipping - discount
+        Math.max(0, subtotal + tax + shipping - discount).toFixed(2)
     );
 
     const summaryItems = Array.isArray(summary?.items)
@@ -596,6 +619,7 @@ function Checkout() {
             const params = new URLSearchParams();
 
             params.set("shipping_method_id", shippingMethodId);
+            params.set("shipping_address_id", String(addressId));
 
             if (appliedCoupon.trim()) {
                 params.set("coupon_code", appliedCoupon.trim());
@@ -786,11 +810,10 @@ function Checkout() {
                                     className="rounded-full bg-ocean-green px-4 py-2.5 text-sm font-bold text-white transition hover:bg-cyprus"
                                 >
                                     <i
-                                        className={`fa-solid ${
-                                            showAddressForm
-                                                ? "fa-xmark"
-                                                : "fa-plus"
-                                        } mr-2`}
+                                        className={`fa-solid ${showAddressForm
+                                            ? "fa-xmark"
+                                            : "fa-plus"
+                                            } mr-2`}
                                     />
                                     {showAddressForm ? "Cancel" : "Add Address"}
                                 </button>
@@ -987,11 +1010,10 @@ function Checkout() {
                                             return (
                                                 <label
                                                     key={id}
-                                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
-                                                        isSelected
-                                                            ? "border-ocean-green bg-green-50 ring-1 ring-ocean-green"
-                                                            : "border-gray-200 hover:border-ocean-green"
-                                                    }`}
+                                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${isSelected
+                                                        ? "border-ocean-green bg-green-50 ring-1 ring-ocean-green"
+                                                        : "border-gray-200 hover:border-ocean-green"
+                                                        }`}
                                                 >
                                                     <input
                                                         type="radio"
@@ -1012,21 +1034,25 @@ function Checkout() {
                                                                 "Saved Address"}
                                                         </span>
 
-                                                        {address.mobile && (
-                                                            <span className="mt-1 block text-sm text-text-grey">
-                                                                {address.mobile}
-                                                            </span>
-                                                        )}
+                                                        {(address.mobile ||
+                                                            address.phone) && (
+                                                                <span className="mt-1 block text-sm text-text-grey">
+                                                                    {address.mobile ||
+                                                                        address.phone}
+                                                                </span>
+                                                            )}
 
                                                         <span className="mt-1 block text-sm text-text-grey">
                                                             {getAddressText(address)}
                                                         </span>
 
-                                                        {address.address_type && (
-                                                            <span className="mt-2 inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-cyprus">
-                                                                {address.address_type}
-                                                            </span>
-                                                        )}
+                                                        {(address.address_type ||
+                                                            address.type) && (
+                                                                <span className="mt-2 inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-cyprus">
+                                                                    {address.address_type ||
+                                                                        address.type}
+                                                                </span>
+                                                            )}
                                                     </span>
                                                 </label>
                                             );
@@ -1067,11 +1093,10 @@ function Checkout() {
                                         return (
                                             <label
                                                 key={method.id}
-                                                className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-4 transition ${
-                                                    isSelected
-                                                        ? "border-ocean-green bg-green-50 ring-1 ring-ocean-green"
-                                                        : "border-gray-200 hover:border-ocean-green"
-                                                }`}
+                                                className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-4 transition ${isSelected
+                                                    ? "border-ocean-green bg-green-50 ring-1 ring-ocean-green"
+                                                    : "border-gray-200 hover:border-ocean-green"
+                                                    }`}
                                             >
                                                 <span className="flex min-w-0 items-start gap-3">
                                                     <input
@@ -1133,6 +1158,7 @@ function Checkout() {
                         </section>
 
                         {/* PAYMENT METHOD */}
+
                         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
                             <h2 className="text-lg font-bold text-cyprus">
                                 <i className="fa-solid fa-wallet mr-2 text-ocean-green" />
@@ -1144,42 +1170,72 @@ function Checkout() {
                             </p>
 
                             <div className="mt-5">
-                                <label
-                                    htmlFor="paymentMethod"
-                                    className="mb-2 block text-sm font-semibold text-cyprus"
-                                >
+                                <label className="mb-3 block text-sm font-semibold text-cyprus">
                                     Choose Payment Method
                                 </label>
 
-                                <select
-                                    id="paymentMethod"
-                                    value={paymentMethodId}
-                                    onChange={(event) => {
-                                        setPaymentMethodId(event.target.value);
-                                        setError("");
-                                    }}
-                                    disabled={
-                                        paymentMethodsLoading ||
-                                        paymentMethods.length === 0
-                                    }
-                                    required
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-cyprus outline-none focus:border-ocean-green disabled:bg-gray-100"
-                                >
-                                    <option value="">
-                                        {paymentMethodsLoading
-                                            ? "Loading payment methods..."
-                                            : "-- Select Payment Method --"}
-                                    </option>
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    {paymentMethods.slice(0, 3).map((method) => {
+                                        const methodId = String(getPaymentMethodId(method));
+                                        const isSelected =
+                                            String(paymentMethodId) === methodId;
 
-                                    {paymentMethods.map((method) => (
-                                        <option
-                                            key={getPaymentMethodId(method)}
-                                            value={getPaymentMethodId(method)}
-                                        >
-                                            {getPaymentMethodName(method)}
-                                        </option>
-                                    ))}
-                                </select>
+                                        const methodName = getPaymentMethodName(method);
+
+                                        const methodIcon = methodName
+                                            .toLowerCase()
+                                            .includes("cash")
+                                            ? "fa-money-bill-wave"
+                                            : methodName.toLowerCase().includes("upi")
+                                                ? "fa-mobile-screen-button"
+                                                : "fa-credit-card";
+
+                                        return (
+                                            <button
+                                                key={methodId}
+                                                type="button"
+                                                disabled={paymentMethodsLoading}
+                                                onClick={() => {
+                                                    setPaymentMethodId(methodId);
+                                                    setError("");
+                                                }}
+                                                className={`flex min-h-[76px] items-center justify-center gap-3 rounded-xl border-2 px-3 py-4 text-sm font-semibold transition-all duration-200
+                                                ${isSelected
+                                                        ? "border-ocean-green bg-aqua-spring text-ocean-green shadow-sm"
+                                                        : "border-gray-200 bg-white text-cyprus hover:border-ocean-green hover:bg-gray-50"
+                                                    }
+                                                    disabled:cursor-not-allowed disabled:opacity-50`}
+                                            >
+                                                <i
+                                                    className={`fa-solid ${methodIcon} text-xl ${isSelected
+                                                        ? "text-ocean-green"
+                                                        : "text-gray-500"
+                                                        }`}
+                                                />
+
+                                                <span className="text-center">
+                                                    {methodName}
+                                                </span>
+
+                                                {isSelected && (
+                                                    <i className="fa-solid fa-circle-check text-ocean-green" />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {paymentMethodsLoading && (
+                                    <p className="mt-3 text-sm text-text-grey">
+                                        Loading payment methods...
+                                    </p>
+                                )}
+
+                                {paymentMethods.length === 0 && !paymentMethodsLoading && (
+                                    <p className="mt-3 rounded-xl bg-yellow-50 p-3 text-sm text-yellow-700">
+                                        No active payment methods available.
+                                    </p>
+                                )}
 
                                 {paymentMethodsError && (
                                     <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -1205,6 +1261,7 @@ function Checkout() {
                                     </p>
                                 )}
                             </div>
+
                         </section>
                     </div>
 
@@ -1222,9 +1279,8 @@ function Checkout() {
                                 className="text-xs font-bold text-ocean-green disabled:opacity-50"
                             >
                                 <i
-                                    className={`fa-solid fa-rotate-right mr-1 ${
-                                        summaryLoading ? "animate-spin" : ""
-                                    }`}
+                                    className={`fa-solid fa-rotate-right mr-1 ${summaryLoading ? "animate-spin" : ""
+                                        }`}
                                 />
                                 Refresh
                             </button>
@@ -1324,8 +1380,8 @@ function Checkout() {
                                             <span className="shrink-0 text-sm font-bold text-cyprus">
                                                 {formatPrice(
                                                     item.subtotal ??
-                                                        Number(item.unit_price || 0) *
-                                                            Number(item.quantity || 1)
+                                                    Number(item.unit_price || 0) *
+                                                    Number(item.quantity || 1)
                                                 )}
                                             </span>
                                         </div>
@@ -1355,11 +1411,23 @@ function Checkout() {
 
                                     <div className="flex justify-between gap-3 text-sm">
                                         <span className="text-text-grey">
-                                            Delivery
+                                            Delivery area
                                         </span>
 
                                         <span className="font-bold text-cyprus">
-                                            {formatPrice(shipping)}
+                                            {formatPrice(deliveryAreaFee)}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex justify-between gap-3 text-sm">
+                                        <span className="text-text-grey">
+                                            {selectedShippingMethod
+                                                ? `Delivery method (${selectedShippingMethod.name || "Selected"})`
+                                                : "Delivery method"}
+                                        </span>
+
+                                        <span className="font-bold text-cyprus">
+                                            {formatPrice(shippingMethodFee)}
                                         </span>
                                     </div>
 

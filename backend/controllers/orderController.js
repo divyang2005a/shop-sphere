@@ -177,6 +177,8 @@ const checkoutSummary = async (req, res) => {
     totalTax = Number(totalTax.toFixed(2));
 
     let shippingFee = 0;
+    let deliveryAreaFee = 0;
+    let shippingMethodFee = 0;
     let shippingMethod = null;
     let deliveryZone = null;
     let shippingAddressId = null;
@@ -214,6 +216,14 @@ const checkoutSummary = async (req, res) => {
       }
 
       shippingMethod = methods[0];
+      shippingMethodFee = Number(shippingMethod.price);
+
+      if (!Number.isFinite(shippingMethodFee) || shippingMethodFee < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid shipping method price",
+        });
+      }
 
       if (
         requestedShippingAddressId === undefined ||
@@ -281,17 +291,21 @@ const checkoutSummary = async (req, res) => {
 
       const freeThreshold = deliveryZone.free_shipping_threshold;
 
-      shippingFee =
+      deliveryAreaFee =
         freeThreshold !== null && subtotal >= Number(freeThreshold)
           ? 0
           : Number(deliveryZone.shipping_fee);
 
-      if (!Number.isFinite(shippingFee) || shippingFee < 0) {
+      if (!Number.isFinite(deliveryAreaFee) || deliveryAreaFee < 0) {
         return res.status(400).json({
           success: false,
           message: "Invalid shipping fee",
         });
       }
+
+      shippingFee = Number(
+        (deliveryAreaFee + shippingMethodFee).toFixed(2),
+      );
     }
 
     let couponDiscount = 0;
@@ -494,6 +508,8 @@ const checkoutSummary = async (req, res) => {
         shipping_address_id: shippingAddressId,
         shipping_method: shippingMethod,
         delivery_area: deliveryZone,
+        delivery_area_fee: deliveryAreaFee,
+        shipping_method_fee: shippingMethodFee,
         shipping_fee: shippingFee,
         coupon_code: appliedCouponCode,
         coupon_discount: couponDiscount,
@@ -937,6 +953,8 @@ const createOrder = async (req, res) => {
     totalTax = Number(totalTax.toFixed(2));
 
     let shippingFee = 0;
+    let deliveryAreaFee = 0;
+    let shippingMethodFee = 0;
     let shippingMethodId = null;
     let shippingZoneId = null;
 
@@ -954,6 +972,12 @@ const createOrder = async (req, res) => {
       throw new Error("Active shipping method not found");
     }
 
+    shippingMethodFee = Number(methods[0].price);
+
+    if (!Number.isFinite(shippingMethodFee) || shippingMethodFee < 0) {
+      throw new Error("Invalid shipping method price");
+    }
+
     deliveryZone = await getActiveDeliveryZone(
       connection,
       shippingAddress.pincode,
@@ -967,14 +991,18 @@ const createOrder = async (req, res) => {
 
     const freeThreshold = deliveryZone.free_shipping_threshold;
 
-    shippingFee =
+    deliveryAreaFee =
       freeThreshold !== null && subtotal >= Number(freeThreshold)
         ? 0
         : Number(deliveryZone.shipping_fee);
 
-    if (!Number.isFinite(shippingFee) || shippingFee < 0) {
+    if (!Number.isFinite(deliveryAreaFee) || deliveryAreaFee < 0) {
       throw new Error("Invalid shipping fee");
     }
+
+    shippingFee = Number(
+      (deliveryAreaFee + shippingMethodFee).toFixed(2),
+    );
 
     let couponId = null;
     let couponUserLimit = null;

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
 
@@ -21,6 +22,7 @@ function CustomerDetails() {
 
     const [customer, setCustomer] = useState(null);
     const [orders, setOrders] = useState([]);
+    const [ordersPage, setOrdersPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [ordersLoading, setOrdersLoading] = useState(true);
@@ -33,6 +35,17 @@ function CustomerDetails() {
     // Order status confirmation modal
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [newOrderStatus, setNewOrderStatus] = useState("");
+
+    const ordersPageSize = 10;
+    const ordersTotalPages = Math.ceil(orders.length / ordersPageSize);
+    const currentOrdersPage = Math.min(
+        ordersPage,
+        Math.max(1, ordersTotalPages)
+    );
+    const paginatedOrders = orders.slice(
+        (currentOrdersPage - 1) * ordersPageSize,
+        currentOrdersPage * ordersPageSize
+    );
 
     const getHeaders = useCallback(
         () => ({
@@ -317,6 +330,7 @@ function CustomerDetails() {
             });
 
             setOrders(customerOrders);
+            setOrdersPage(1);
         } catch (err) {
             setOrderError(
                 err.message || "Unable to load customer orders."
@@ -1177,7 +1191,7 @@ function CustomerDetails() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {orders.map((order) => (
+                                    {paginatedOrders.map((order) => (
                                         <tr
                                             key={getOrderId(order)}
                                             className="transition hover:bg-gray-50/70"
@@ -1243,7 +1257,7 @@ function CustomerDetails() {
 
                         {/* Mobile order cards */}
                         <div className="space-y-3 p-4 lg:hidden">
-                            {orders.map((order) => (
+                            {paginatedOrders.map((order) => (
                                 <div
                                     key={getOrderId(order)}
                                     className="rounded-xl border border-gray-100 p-4"
@@ -1318,6 +1332,14 @@ function CustomerDetails() {
                                 </div>
                             ))}
                         </div>
+                        <Pagination
+                            page={currentOrdersPage}
+                            totalPages={ordersTotalPages}
+                            totalItems={orders.length}
+                            pageSize={ordersPageSize}
+                            itemLabel="orders"
+                            onPageChange={setOrdersPage}
+                        />
                     </>
                 )}
             </section>

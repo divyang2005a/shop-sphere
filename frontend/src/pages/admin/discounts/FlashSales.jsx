@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_BASE_URL = "http://192.168.1.20:5000/api";
+const PAGE_SIZE = 10;
 
 const toFlashSale = (sale) => {
     const now = Date.now();
@@ -42,6 +44,7 @@ function FlashSales() {
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
     const [showForm, setShowForm] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -244,6 +247,12 @@ function FlashSales() {
 
         return searchMatch && statusMatch;
     });
+    const totalPages = Math.max(1, Math.ceil(filteredFlashSales.length / PAGE_SIZE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const currentFlashSales = filteredFlashSales.slice(
+        (safeCurrentPage - 1) * PAGE_SIZE,
+        safeCurrentPage * PAGE_SIZE
+    );
 
 
     const activeSales = flashSales.filter(
@@ -708,7 +717,10 @@ function FlashSales() {
                         <input
                             type="text"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                setCurrentPage(1);
+                                setSearch(e.target.value);
+                            }}
                             placeholder="Search sale or product..."
                             className="w-full rounded-lg border border-gray-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-ocean-green"
                         />
@@ -718,7 +730,10 @@ function FlashSales() {
 
                     <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                            setCurrentPage(1);
+                            setStatusFilter(e.target.value);
+                        }}
                         className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-ocean-green"
                     >
 
@@ -796,7 +811,7 @@ function FlashSales() {
 
                         <tbody className="divide-y divide-gray-100">
 
-                            {filteredFlashSales.map((sale) => (
+                            {currentFlashSales.map((sale) => (
 
                                 <tr
                                     key={sale.id}
@@ -949,7 +964,7 @@ function FlashSales() {
 
             <div className="space-y-4 lg:hidden">
 
-                {filteredFlashSales.map((sale) => (
+                {currentFlashSales.map((sale) => (
 
                     <div
                         key={sale.id}
@@ -1146,6 +1161,17 @@ function FlashSales() {
 
                 </div>
 
+            )}
+
+            {filteredFlashSales.length > 0 && (
+                <Pagination
+                    page={safeCurrentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredFlashSales.length}
+                    pageSize={PAGE_SIZE}
+                    itemLabel="flash sales"
+                    onPageChange={setCurrentPage}
+                />
             )}
 
         </div>

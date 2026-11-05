@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Pagination from "../../../components/Pagination";
 
 const API_URL = "http://192.168.1.20:5000/api/shipments/admin";
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
     { value: "pending", label: "Pending" },
@@ -104,6 +106,7 @@ function Shipping() {
     const [shipments, setShipments] = useState([]);
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [loading, setLoading] = useState(true);
     const [updatingId, setUpdatingId] = useState(null);
@@ -264,6 +267,17 @@ function Shipping() {
         });
     }, [shipments, search, statusFilter]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredShipments.length / PAGE_SIZE)
+    );
+    const safeCurrentPage = Math.max(1, Math.min(currentPage, totalPages));
+
+    const paginatedShipments = useMemo(() => {
+        const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+        return filteredShipments.slice(startIndex, startIndex + PAGE_SIZE);
+    }, [filteredShipments, safeCurrentPage]);
+
     // Dashboard statistics
     const stats = useMemo(() => {
         const countStatus = (status) =>
@@ -420,9 +434,10 @@ function Shipping() {
                         <input
                             type="text"
                             value={search}
-                            onChange={(event) =>
-                                setSearch(event.target.value)
-                            }
+                            onChange={(event) => {
+                                setSearch(event.target.value);
+                                setCurrentPage(1);
+                            }}
                             placeholder="Search order, customer, tracking ID..."
                             className="w-full rounded-lg border border-gray-200 bg-white py-3 pl-9 pr-4 text-sm outline-none transition focus:border-cyprus focus:ring-2 focus:ring-cyprus/10"
                         />
@@ -430,9 +445,10 @@ function Shipping() {
 
                     <select
                         value={statusFilter}
-                        onChange={(event) =>
-                            setStatusFilter(event.target.value)
-                        }
+                        onChange={(event) => {
+                            setStatusFilter(event.target.value);
+                            setCurrentPage(1);
+                        }}
                         className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyprus md:w-56"
                     >
                         <option value="all">All Statuses</option>
@@ -514,7 +530,7 @@ function Shipping() {
                                 </thead>
 
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredShipments.map((shipment) => {
+                                    {paginatedShipments.map((shipment) => {
                                         const shipmentId =
                                             getShipmentId(shipment);
 
@@ -633,7 +649,7 @@ function Shipping() {
 
                         {/* Mobile and Tablet Cards */}
                         <div className="grid grid-cols-1 gap-4 p-4 lg:hidden">
-                            {filteredShipments.map((shipment) => {
+                            {paginatedShipments.map((shipment) => {
                                 const shipmentId =
                                     getShipmentId(shipment);
 
@@ -770,6 +786,21 @@ function Shipping() {
                             })}
                         </div>
                     </>
+                )}
+
+                {!loading && filteredShipments.length > 0 && (
+                    <Pagination
+                        page={safeCurrentPage}
+                        totalPages={totalPages}
+                        totalItems={filteredShipments.length}
+                        pageSize={PAGE_SIZE}
+                        itemLabel="shipments"
+                        onPageChange={(page) =>
+                            setCurrentPage(
+                                Math.max(1, Math.min(page, totalPages))
+                            )
+                        }
+                    />
                 )}
             </div>
         </div>

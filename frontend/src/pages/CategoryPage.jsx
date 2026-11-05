@@ -1,6 +1,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+    useLocation,
+    useNavigate,
+    useParams,
+    useSearchParams,
+} from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 
 const API_BASE_URL = "http://192.168.1.20:5000";
@@ -238,12 +243,16 @@ function createWishlistMap(items) {
 function CategoryPage() {
     const { categorySlug = "" } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [search, setSearch] = useState("");
+    const [search, setSearch] = useState(searchParams.get("search") || "");
     const [sortBy, setSortBy] = useState("default");
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState(null);
 
     // Wishlist state
     const [wishlistItems, setWishlistItems] = useState({});
@@ -251,7 +260,13 @@ function CategoryPage() {
     const [wishlistError, setWishlistError] = useState("");
 
     const normalizedSlug = categorySlug.toLowerCase().trim();
-    const categoryName = getCategoryName(normalizedSlug);
+    const isProductsRoute = location.pathname === "/products";
+    const requestedSearch = searchParams.get("search")?.trim() || "";
+    const categoryName = isProductsRoute
+        ? requestedSearch
+            ? "Search Results"
+            : "All Products"
+        : getCategoryName(normalizedSlug);
 
     // --------------------------------------------------
     // FETCH PRODUCTS
@@ -264,8 +279,9 @@ function CategoryPage() {
                 setLoading(true);
                 setError("");
                 setProducts([]);
+                setPagination(null);
 
-                if (!normalizedSlug) {
+                if (!normalizedSlug && !isProductsRoute) {
                     throw new Error(
                         "Category is missing from the URL."
                     );
@@ -279,11 +295,20 @@ function CategoryPage() {
                         ? categoryMap[normalizedSlug]
                         : normalizedSlug;
 
-                const apiUrl = apiCategory
-                    ? `${API_BASE_URL}/api/products?category=${encodeURIComponent(
-                          apiCategory
-                      )}`
-                    : `${API_BASE_URL}/api/products`;
+                const params = new URLSearchParams({
+                    page: String(page),
+                    limit: "20",
+                });
+
+                if (apiCategory) {
+                    params.set("category", apiCategory);
+                }
+
+                if (isProductsRoute && requestedSearch) {
+                    params.set("search", requestedSearch);
+                }
+
+                const apiUrl = `${API_BASE_URL}/api/products?${params}`;
 
                 console.log("Category slug:", normalizedSlug);
                 console.log("Backend category:", apiCategory);
@@ -317,6 +342,8 @@ function CategoryPage() {
                 }
 
                 if (controller.signal.aborted) return;
+
+                setPagination(responseData?.pagination || null);
 
                 // Show products immediately
                 setProducts(productList);
@@ -420,7 +447,7 @@ function CategoryPage() {
         fetchProducts();
 
         return () => controller.abort();
-    }, [normalizedSlug]);
+    }, [normalizedSlug, isProductsRoute, requestedSearch, page]);
 
     // --------------------------------------------------
     // FETCH WISHLIST
@@ -618,7 +645,7 @@ function CategoryPage() {
     // SEARCH AND SORT
     // --------------------------------------------------
     const filteredProducts = useMemo(() => {
-    const searchText = search.trim().toLowerCase();
+    const searchText = isProductsRoute ? "" : search.trim().toLowerCase();
 
     const productArray = Array.isArray(products)
         ? products
@@ -660,7 +687,25 @@ function CategoryPage() {
         }
 
         return result;
-    }, [products, search, sortBy]);
+    }, [products, search, sortBy, isProductsRoute]);
+
+    function handleSearchSubmit(event) {
+        event.preventDefault();
+
+        if (isProductsRoute) {
+            const query = search.trim();
+            setPage(1);
+            setSearchParams(query ? { search: query } : {});
+        }
+    }
+
+    function clearSearch() {
+        setSearch("");
+        if (isProductsRoute) {
+            setPage(1);
+            setSearchParams({});
+        }
+    }
 
     // --------------------------------------------------
     // RENDER
@@ -673,7 +718,7 @@ function CategoryPage() {
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                         <p className="text-sm font-semibold text-emerald-600">
-                            Shop by Category
+                            {isProductsRoute ? "ShopSphere Catalog" : "Shop by Category"}
                         </p>
 
                         <h1 className="mt-1 text-2xl font-bold capitalize text-gray-900 sm:text-3xl">
@@ -681,19 +726,26 @@ function CategoryPage() {
                         </h1>
 
                         <p className="mt-2 text-sm text-gray-500">
-                            Explore products in {categoryName}.
+                            {isProductsRoute && requestedSearch
+                                ? `Showing products matching "${requestedSearch}".`
+                                : `Explore products in ${categoryName}.`}
                         </p>
                     </div>
 
                     {!loading && !error && (
                         <p className="text-sm text-gray-500">
-                            {filteredProducts.length} products
+                            {isProductsRoute
+                                ? pagination?.total ?? filteredProducts.length
+                                : filteredProducts.length} products
                         </p>
                     )}
                 </div>
 
                 {/* SEARCH AND SORT */}
-                <div className="mb-6 flex flex-col gap-3 rounded-xl border border-gray-100 bg-white p-4 sm:flex-row">
+                <form
+                    onSubmit={handleSearchSubmit}
+                    className="mb-6 flex flex-col gap-3 rounded-xl border border-gray-100 bg-white p-4 sm:flex-row"
+                >
                     <div className="flex-1">
                         <input
                             type="search"
@@ -701,7 +753,11 @@ function CategoryPage() {
                             onChange={(event) =>
                                 setSearch(event.target.value)
                             }
-                            placeholder="Search products in this category..."
+                            placeholder={
+                                isProductsRoute
+                                    ? "Search all products, brands, categories, or codes..."
+                                    : "Search products in this category..."
+                            }
                             aria-label="Search products"
                             className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                         />
@@ -728,7 +784,15 @@ function CategoryPage() {
                             Name: A to Z
                         </option>
                     </select>
-                </div>
+                    {isProductsRoute && (
+                        <button
+                            type="submit"
+                            className="rounded-lg bg-ocean-green px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyprus"
+                        >
+                            Search
+                        </button>
+                    )}
+                </form>
 
                 {/* WISHLIST / PRODUCT ERROR */}
                 {wishlistError && (
@@ -756,7 +820,7 @@ function CategoryPage() {
                             <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-emerald-600" />
 
                             <p className="mt-4 text-sm text-gray-500">
-                                Loading {categoryName} products...
+                                Loading {categoryName.toLowerCase()}...
                             </p>
                         </div>
                     </div>
@@ -795,13 +859,15 @@ function CategoryPage() {
                             </h2>
 
                             <p className="mt-2 text-sm text-gray-500">
-                                No products match this category or search.
+                                {isProductsRoute
+                                    ? "No products matched your search."
+                                    : "No products match this category or search."}
                             </p>
 
                             {search && (
                                 <button
                                     type="button"
-                                    onClick={() => setSearch("")}
+                                    onClick={clearSearch}
                                     className="mt-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700"
                                 >
                                     Clear Search
@@ -904,6 +970,47 @@ function CategoryPage() {
                                 );
                             })}
                         </div>
+                    )}
+
+                {!loading &&
+                    !error &&
+                    isProductsRoute &&
+                    pagination?.total_pages > 1 && (
+                        <nav
+                            aria-label="Search result pages"
+                            className="mt-8 flex items-center justify-center gap-4"
+                        >
+                            <button
+                                type="button"
+                                disabled={page <= 1}
+                                onClick={() =>
+                                    setPage((currentPage) =>
+                                        Math.max(1, currentPage - 1)
+                                    )
+                                }
+                                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-cyprus disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Previous
+                            </button>
+                            <span className="text-sm text-gray-600">
+                                Page {pagination.page} of {pagination.total_pages}
+                            </span>
+                            <button
+                                type="button"
+                                disabled={page >= pagination.total_pages}
+                                onClick={() =>
+                                    setPage((currentPage) =>
+                                        Math.min(
+                                            pagination.total_pages,
+                                            currentPage + 1
+                                        )
+                                    )
+                                }
+                                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-cyprus disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Next
+                            </button>
+                        </nav>
                     )}
             </div>
         </main>
